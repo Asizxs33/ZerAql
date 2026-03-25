@@ -17,7 +17,10 @@ dotenv.config()
 const app = express()
 const httpServer = createServer(app)
 
-app.use(cors({ origin: true, credentials: true }))
+app.use(cors({
+  origin: (origin, callback) => callback(null, true),
+  credentials: true
+}))
 app.use(express.json())
 
 app.use('/api/auth', authRoutes)
@@ -32,7 +35,11 @@ app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
 
 // ── WebSocket (Socket.io) ──────────────────────────────────────────────────
 const io = new SocketIO(httpServer, {
-  cors: { origin: true, methods: ['GET', 'POST'], credentials: true },
+  cors: { 
+    origin: (origin, callback) => callback(null, true), 
+    methods: ['GET', 'POST'], 
+    credentials: true 
+  },
 })
 
 // Store connected teachers and their rooms
