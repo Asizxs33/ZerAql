@@ -75,6 +75,72 @@ export async function initDB() {
     );
 
     ALTER TABLE users ADD COLUMN IF NOT EXISTS class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL;
+    ALTER TABLE lessons ADD COLUMN IF NOT EXISTS questions JSONB DEFAULT '[]';
+    ALTER TABLE lessons ADD COLUMN IF NOT EXISTS lesson_type VARCHAR(20) DEFAULT 'quiz';
   `)
+
+  // Seed sample questions for any active lessons that have no questions yet
+  const { rows: emptyLessons } = await pool.query(
+    `SELECT id, title, subject FROM lessons WHERE status = 'active' AND (questions IS NULL OR questions = '[]'::jsonb)`
+  )
+
+  const sampleQuestions = {
+    'Математика': [
+      { text: '2x + 5 = 13. x = ?', type: 'single', options: ['x = 3', 'x = 4', 'x = 5', 'x = 6'], answer: 1 },
+      { text: 'Үшбұрыштың бұрыштары қосындысы неге тең?', type: 'single', options: ['90°', '180°', '270°', '360°'], answer: 1 },
+      { text: '√144 = ?', type: 'single', options: ['10', '11', '12', '13'], answer: 2 },
+      { text: 'Егер a = 3, b = 4 болса, a² + b² = ?', type: 'single', options: ['25', '14', '7', '49'], answer: 0 },
+      { text: 'Теңдеуді шешіңіз: 3x - 7 = 8', type: 'single', options: ['x = 3', 'x = 4', 'x = 5', 'x = 6'], answer: 2 },
+    ],
+    'Физика': [
+      { text: 'Жарықтың вакуумдагы жылдамдығы қандай?', type: 'single', options: ['300 000 км/с', '150 000 км/с', '3 000 км/с', '30 000 км/с'], answer: 0 },
+      { text: 'Ньютонның бірінші заңы нені сипаттайды?', type: 'single', options: ['Инерция', 'Күш', 'Жұмыс', 'Энергия'], answer: 0 },
+      { text: 'Дене массасы 5 кг, үдеу 2 м/с². Күш неге тең?', type: 'single', options: ['5 Н', '7 Н', '10 Н', '2.5 Н'], answer: 2 },
+      { text: 'Электр кедергісінің өлшем бірлігі?', type: 'single', options: ['Ампер', 'Вольт', 'Ом', 'Ватт'], answer: 2 },
+      { text: 'Потенциалдық энергия формуласы?', type: 'single', options: ['E = mv²/2', 'E = mgh', 'E = Fs', 'E = Pt'], answer: 1 },
+    ],
+    'Химия': [
+      { text: 'Судың химиялық формуласы?', type: 'single', options: ['H₂O', 'CO₂', 'NaCl', 'O₂'], answer: 0 },
+      { text: 'Натрий элементінің символы?', type: 'single', options: ['N', 'Na', 'Ni', 'Nb'], answer: 1 },
+      { text: 'Периодтық жүйені кім ашты?', type: 'single', options: ['Эйнштейн', 'Ньютон', 'Менделеев', 'Дарвин'], answer: 2 },
+      { text: 'Тотығу реакциясында не болады?', type: 'single', options: ['Электрон жоғалады', 'Электрон қосылады', 'Протон жоғалады', 'Нейтрон қосылады'], answer: 0 },
+      { text: 'H₂SO₄ — бұл қандай қышқыл?', type: 'single', options: ['Тұз', 'Азот', 'Күкірт', 'Фосфор'], answer: 2 },
+    ],
+    'Биология': [
+      { text: 'Фотосинтез қай органоидта жүреді?', type: 'single', options: ['Митохондрия', 'Хлоропласт', 'Рибосома', 'Ядро'], answer: 1 },
+      { text: 'ДНҚ-ның негізгі қызметі?', type: 'single', options: ['Энергия өндіру', 'Тұқым қуалаушылық ақпаратты сақтау', 'Белок синтезі', 'Тыныс алу'], answer: 1 },
+      { text: 'Адам ағзасында неше хромосома бар?', type: 'single', options: ['44', '46', '48', '42'], answer: 1 },
+      { text: 'Митоз — бұл не?', type: 'single', options: ['Жыныстық бөліну', 'Жай бөліну', 'Тыныс алу', 'Қоректену'], answer: 1 },
+      { text: 'Қан түрлері: 4-ші топ — қандай?', type: 'single', options: ['O', 'A', 'B', 'AB'], answer: 3 },
+    ],
+    'История': [
+      { text: 'Қазақстан тәуелсіздікті қай жылы алды?', type: 'single', options: ['1989', '1990', '1991', '1992'], answer: 2 },
+      { text: 'Ұлы Жібек жолы қандай мақсатта пайдаланылды?', type: 'single', options: ['Соғыс', 'Сауда', 'Туризм', 'Дін'], answer: 1 },
+      { text: 'Бірінші дүниежүзілік соғыс қай жылы басталды?', type: 'single', options: ['1912', '1913', '1914', '1915'], answer: 2 },
+      { text: 'Қазақстанның астанасы?', type: 'single', options: ['Алматы', 'Шымкент', 'Астана', 'Қарағанды'], answer: 2 },
+      { text: 'Абай Құнанбайұлы — кім?', type: 'single', options: ['Батыр', 'Ақын-философ', 'Хан', 'Ғалым'], answer: 1 },
+    ],
+    'default': [
+      { text: 'Критикалық ойлау дегеніміз не?', type: 'single', options: ['Барлығына күмәнмен қарау', 'Дәлелдерге сүйене отырып ойлау', 'Жылдам шешім қабылдау', 'Басқаның пікірін қабылдау'], answer: 1 },
+      { text: 'Оқу барысында ең тиімді әдіс?', type: 'single', options: ['Тек оқу', 'Тек жазу', 'Оқу, жазу және практика', 'Тек тыңдау'], answer: 2 },
+      { text: 'Проблемалық оқыту дегеніміз не?', type: 'single', options: ['Есептер шығару', 'Мәселені өз бетімен шешу', 'Жаттау', 'Бақылау'], answer: 1 },
+      { text: 'Командалық жұмыста не маңызды?', type: 'single', options: ['Жеке жетістік', 'Байланыс және сенім', 'Бәсеке', 'Жылдамдық'], answer: 1 },
+      { text: 'Рефлексия дегеніміз не?', type: 'single', options: ['Жаттау', 'Өз іс-әрекетін талдау', 'Сын айту', 'Мақсат қою'], answer: 1 },
+    ],
+  }
+
+  for (const lesson of emptyLessons) {
+    const subj = lesson.subject || ''
+    const qs = sampleQuestions[subj] || sampleQuestions['default']
+    await pool.query(
+      `UPDATE lessons SET questions = $1, lesson_type = 'quiz' WHERE id = $2`,
+      [JSON.stringify(qs), lesson.id]
+    )
+  }
+
+  if (emptyLessons.length > 0) {
+    console.log(`Seeded questions for ${emptyLessons.length} lessons`)
+  }
+
   console.log('Database schema initialized')
 }

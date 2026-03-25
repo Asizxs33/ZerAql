@@ -1,6 +1,8 @@
 import express from 'express'
 import OpenAI from 'openai'
 import { requireAuth } from '../middleware/auth.js'
+import { pool } from '../db.js'
+import { predictPerformance } from '../ml/performancePredictor.js'
 const authMiddleware = requireAuth
 
 const router = express.Router()
@@ -180,6 +182,68 @@ JSON: { "feedback": "мәтін", "emoji": "emoji" }`
     res.json(JSON.parse(completion.choices[0].message.content))
   } catch (err) {
     res.json({ feedback: generateStudentFeedback({ attention, emotion, score }), emoji: '📚' })
+  }
+})
+
+// POST /api/ai/predict-performance
+// ML model: trains on real DB data, predicts each student's next grade
+router.post('/predict-performance', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Тек мұғалімдер үшін' })
+  const { class_name } = req.body
+
+  try {
+    // 1. Fetch all students (optionally filtered by class)
+    const { rows: students } = await pool.query(
+      `SELECT u.id, u.full_name, COALESCE(c.name, 'Сыныпсыз') AS class_name
+       FROM users u LEFT JOIN classes c ON c.id = u.class_id
+       WHERE u.role = 'student' ${class_name ? "AND c.name = $1" : ""}
+       ORDER BY u.full_name`,
+      class_name ? [class_name] : []
+    )
+
+    if (!students.length) return res.json({ predictions: [], modelInfo: {} })
+
+    const studentIds = students.map(s => s.id)
+
+    // 2. Fetch all grades for these students (ordered newest first)
+    const { rows: allGrades } = await pool.query(
+      `SELECT student_id, score, grade_date, lesson_id
+       FROM grades
+       WHERE student_id = ANY($1)
+       ORDER BY student_id, grade_date DESC, created_at DESC`,
+      [studentIds]
+    )
+
+    // 3. Fetch monitoring data (last 50 records per student)
+    const { rows: allMonitoring } = await pool.query(
+      `SELECT DISTINCT ON (student_id, created_at) student_id, attention, emotion, pulse, created_at
+       FROM session_monitoring
+       WHERE student_id = ANY($1) AND attention IS NOT NULL
+       ORDER BY student_id, created_at DESC`,
+      [studentIds]
+    )
+
+    // 4. Group by student
+    const gradesByStudent = {}
+    const monByStudent = {}
+    for (const s of students) {
+      gradesByStudent[s.id] = allGrades.filter(g => g.student_id === s.id)
+      monByStudent[s.id] = allMonitoring.filter(m => m.student_id === s.id).slice(0, 50)
+    }
+
+    const studentData = students.map(s => ({
+      student: s,
+      grades: gradesByStudent[s.id],
+      monitoring: monByStudent[s.id],
+    }))
+
+    // 5. Run ML model
+    const result = predictPerformance(studentData)
+
+    res.json(result)
+  } catch (e) {
+    console.error('Prediction error:', e)
+    res.status(500).json({ error: e.message })
   }
 })
 

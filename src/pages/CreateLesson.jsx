@@ -68,6 +68,8 @@ export default function CreateLesson() {
         duration: Number(duration),
         max_score: Number(maxScore),
         status,
+        lesson_type: lessonType,
+        questions,
       })
       setSuccess(status === 'active' ? 'Сабақ жарияланды!' : 'Жоба сақталды!')
       setTimeout(() => navigate('/teacher'), 1200)

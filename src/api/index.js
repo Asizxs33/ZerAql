@@ -1,5 +1,4 @@
-// Production Backend URL (Render)
-const BASE = 'https://zeraql.onrender.com/api'
+const BASE = '/api'
 
 async function req(path, opts = {}) {
   const token = localStorage.getItem('zeraql_token')
@@ -32,6 +31,7 @@ export const api = {
 
   // Lessons
   getLessons: () => req('/lessons'),
+  getLesson: (id) => req(`/lessons/${id}`),
   createLesson: (data) => req('/lessons', { method: 'POST', body: JSON.stringify(data) }),
   updateLesson: (id, data) => req(`/lessons/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteLesson: (id) => req(`/lessons/${id}`, { method: 'DELETE' }),
@@ -47,6 +47,7 @@ export const api = {
   getLiveMonitoring: () => req('/monitoring/live'),
 
   // AI (GPT-4o-mini through server — API key is NEVER exposed to frontend)
+  predictPerformance: (data) => req('/ai/predict-performance', { method: 'POST', body: JSON.stringify(data) }),
   getAIRecommendations: (data) => req('/ai/recommendations', { method: 'POST', body: JSON.stringify(data) }),
   generateLessonQuestions: (data) => req('/ai/lesson-questions', { method: 'POST', body: JSON.stringify(data) }),
   getStudentFeedback: (data) => req('/ai/student-feedback', { method: 'POST', body: JSON.stringify(data) }),

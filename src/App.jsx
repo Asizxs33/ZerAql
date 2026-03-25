@@ -19,6 +19,7 @@ import Analytics from './pages/Analytics'
 import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
+import PerformancePrediction from './pages/PerformancePrediction'
 
 function ProtectedRoute({ children, role }) {
   const { user, loading } = useAuth()
@@ -81,6 +82,7 @@ function AppRoutes() {
         <Route path="/journal" element={<ProtectedRoute role="teacher"><ElectronicJournal /></ProtectedRoute>} />
         <Route path="/create-lesson" element={<ProtectedRoute role="teacher"><CreateLesson /></ProtectedRoute>} />
         <Route path="/teacher-analytics" element={<ProtectedRoute role="teacher"><PostLessonAnalytics /></ProtectedRoute>} />
+        <Route path="/prediction" element={<ProtectedRoute role="teacher"><PerformancePrediction /></ProtectedRoute>} />
         <Route path="/student-analytics/:studentId" element={<ProtectedRoute role="teacher"><StudentAnalyticsTeacherView /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

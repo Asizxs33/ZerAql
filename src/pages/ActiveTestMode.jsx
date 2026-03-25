@@ -1,23 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useGlobalProctoring } from '../context/ProctoringContext'
 import { useStudentMonitoring } from '../hooks/useMonitoringSocket'
+import { useAuth } from '../context/AuthContext'
+import { api } from '../api/index.js'
 
-const answers = [
-  { letter: 'A', text: 'x₁ = -3, x₂ = 0.5' },
-  { letter: 'B', text: 'x₁ = 3, x₂ = -0.5' },
-  { letter: 'C', text: 'x₁ = -1.5, x₂ = 1' },
-  { letter: 'D', text: 'x₁ = 0.5, x₂ = 3' },
-]
+const LETTERS = ['A', 'B', 'C', 'D', 'E']
 
 const VIOLATION_COLORS = {
   tab_switch: '#ef4444',
   face_missing: '#f59e0b',
   multiple_faces: '#ef4444',
-  copy_paste: '#f59e0b',
   devtools_key: '#ef4444',
   devtools_open: '#ef4444',
   low_attention: '#f59e0b',
-  phone_detected: '#ef4444',
   face_mismatch: '#ef4444',
   sleepy: '#f59e0b',
   extra_person: '#ef4444',
@@ -25,73 +21,238 @@ const VIOLATION_COLORS = {
 }
 
 export default function ActiveTestMode() {
-  const [selected, setSelected] = useState(null)
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const lessonId = searchParams.get('lessonId')
+
+  const [lesson, setLesson] = useState(null)
+  const [questions, setQuestions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [currentQ, setCurrentQ] = useState(0)
+  const [answers, setAnswers] = useState({}) // { qIndex: letterOrText }
+  const [openText, setOpenText] = useState('')
+  const [timeLeft, setTimeLeft] = useState(null)
   const [showModal, setShowModal] = useState(false)
-  const [timeLeft, setTimeLeft] = useState(28 * 60 + 45)
   const [showViolations, setShowViolations] = useState(false)
   const [alertMsg, setAlertMsg] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState(null) // { score, correct, total }
   const alertTimeout = useRef(null)
-  const currentQ = 7
-  const total = 20
+  const metricsHistory = useRef([])
 
   const { sendMetrics, sendViolation } = useStudentMonitoring({
-    studentId: 'demo-student',
-    studentName: 'Оқушы',
-    classId: 'demo-class',
+    studentId: user?.id || 'demo',
+    studentName: user?.full_name || 'Оқушы',
+    classId: user?.class_id || 'demo',
   })
 
-  // Use the global proctoring context (shared camera session)
   const {
-    videoRef,
-    canvasRef,
-    modelsLoaded,
-    cameraActive,
-    metrics,
-    violations,
-    loadingStatus,
-    enrollFace,
+    videoRef, canvasRef, modelsLoaded, cameraActive,
+    metrics, violations, loadingStatus, enrollFace,
   } = useGlobalProctoring() || {}
 
-  // Show latest violation as toast
-  const latestViolation = violations?.[0]
-  const latestViolationId = latestViolation?.timestamp
+  // Load lesson + questions
   useEffect(() => {
-    if (!latestViolation) return
-    if (alertTimeout.current) clearTimeout(alertTimeout.current)
-    setAlertMsg(latestViolation.message)
-    alertTimeout.current = setTimeout(() => setAlertMsg(null), 3500)
-    sendViolation(latestViolation)
-  }, [latestViolationId])
+    if (!lessonId) { setLoading(false); return }
+    api.getLesson(lessonId)
+      .then(l => {
+        setLesson(l)
+        const qs = Array.isArray(l.questions) ? l.questions : []
+        setQuestions(qs)
+        setTimeLeft((l.duration || 30) * 60)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [lessonId])
 
-  // Enroll face when camera + models ready (camera already started by global context)
+  // Enroll face when camera ready
   useEffect(() => {
     if (cameraActive && modelsLoaded && enrollFace) {
       setTimeout(() => enrollFace(), 2000)
     }
   }, [cameraActive, modelsLoaded])
 
-  // Timer
+  // Collect metrics history for monitoring save
   useEffect(() => {
+    if (metrics && cameraActive) {
+      metricsHistory.current.push(metrics)
+      sendMetrics(metrics)
+    }
+  }, [metrics?.attention, metrics?.pulse])
+
+  // Violation toast
+  const latestViolation = violations?.[0]
+  useEffect(() => {
+    if (!latestViolation) return
+    if (alertTimeout.current) clearTimeout(alertTimeout.current)
+    setAlertMsg(latestViolation.message)
+    alertTimeout.current = setTimeout(() => setAlertMsg(null), 3500)
+    sendViolation(latestViolation)
+  }, [latestViolation?.timestamp])
+
+  // Countdown timer
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return
     const interval = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 0) { clearInterval(interval); return 0 }
+        if (prev <= 1) { clearInterval(interval); handleFinish(); return 0 }
         return prev - 1
       })
     }, 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [timeLeft !== null])
 
   const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
-  const emotionIcon = {
-    happy: 'sentiment_very_satisfied',
-    sad: 'sentiment_dissatisfied',
-    angry: 'sentiment_very_dissatisfied',
-    fearful: 'sentiment_stressed',
-    surprised: 'sentiment_excited',
-    neutral: 'sentiment_neutral',
-    disgusted: 'sick',
+  const selectAnswer = (letter) => {
+    setAnswers(prev => ({ ...prev, [currentQ]: letter }))
   }
+
+  const saveOpenText = () => {
+    if (openText.trim()) {
+      setAnswers(prev => ({ ...prev, [currentQ]: openText.trim() }))
+    }
+  }
+
+  const goNext = () => {
+    // save open text answer before moving
+    const q = questions[currentQ]
+    if (q?.type === 'open' && openText.trim()) {
+      setAnswers(prev => ({ ...prev, [currentQ]: openText.trim() }))
+    }
+    if (currentQ < questions.length - 1) {
+      setCurrentQ(i => i + 1)
+      setOpenText(typeof answers[currentQ + 1] === 'string' && questions[currentQ + 1]?.type === 'open' ? (answers[currentQ + 1] || '') : '')
+    } else {
+      setShowModal(true)
+    }
+  }
+
+  const goPrev = () => {
+    if (currentQ > 0) {
+      setCurrentQ(i => i - 1)
+      const prevQ = questions[currentQ - 1]
+      setOpenText(prevQ?.type === 'open' ? (answers[currentQ - 1] || '') : '')
+    }
+  }
+
+  const handleFinish = async () => {
+    if (submitting || result) return
+    setSubmitting(true)
+    setShowModal(false)
+
+    // Calculate score
+    const singleQs = questions.filter(q => q.type === 'single')
+    let correct = 0
+    singleQs.forEach((q, _) => {
+      const qIdx = questions.indexOf(q)
+      const selectedLetter = answers[qIdx]
+      const correctLetter = LETTERS[q.answer ?? 0]
+      if (selectedLetter === correctLetter) correct++
+    })
+
+    const pct = singleQs.length > 0 ? correct / singleQs.length : 1
+    const score = pct >= 0.8 ? 5 : pct >= 0.6 ? 4 : pct >= 0.4 ? 3 : pct >= 0.2 ? 2 : 1
+
+    // Submit grade
+    try {
+      await api.addGrade({
+        lesson_id: lessonId ? Number(lessonId) : null,
+        subject: lesson?.subject || null,
+        score,
+      })
+    } catch (e) {
+      console.error('Grade submit failed:', e.message)
+    }
+
+    // Save monitoring session
+    if (metricsHistory.current.length > 0) {
+      const hist = metricsHistory.current
+      const avgAttention = Math.round(hist.reduce((s, m) => s + (m.attention || 0), 0) / hist.length)
+      const avgEmotion = Math.round(hist.reduce((s, m) => s + (m.emotionScore || 0), 0) / hist.length)
+      const avgPulse = Math.round(hist.filter(m => m.pulse > 0).reduce((s, m) => s + m.pulse, 0) / (hist.filter(m => m.pulse > 0).length || 1))
+      try {
+        await api.saveMonitoring({
+          lesson_id: lessonId ? Number(lessonId) : null,
+          attention: avgAttention,
+          emotion: avgEmotion,
+          pulse: avgPulse || 0,
+        })
+      } catch {}
+    }
+
+    setResult({ score, correct, total: singleQs.length, pct: Math.round(pct * 100) })
+    setSubmitting(false)
+  }
+
+  const emotionIcon = {
+    happy: 'sentiment_very_satisfied', sad: 'sentiment_dissatisfied',
+    angry: 'sentiment_very_dissatisfied', fearful: 'sentiment_stressed',
+    surprised: 'sentiment_excited', neutral: 'sentiment_neutral', disgusted: 'sick',
+  }
+
+  // ── Result screen ─────────────────────────────────────────────────────────
+  if (result) {
+    const colors = { 5: '#22c55e', 4: '#2F7F86', 3: '#f59e0b', 2: '#f97316', 1: '#ef4444' }
+    const labels = { 5: 'Өте жақсы!', 4: 'Жақсы!', 3: 'Қанағаттанарлық', 2: 'Нашар', 1: 'Өте нашар' }
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0fafa' }}>
+        <div className="w-full max-w-md rounded-3xl p-10 text-center shadow-2xl" style={{ background: '#fff', border: '2px solid #BFE3E1' }}>
+          <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6"
+            style={{ background: `${colors[result.score]}18`, border: `2px solid ${colors[result.score]}40` }}>
+            <span className="text-5xl font-['Space_Grotesk'] font-black" style={{ color: colors[result.score] }}>{result.score}</span>
+          </div>
+          <h2 className="font-['Space_Grotesk'] text-2xl font-black text-[#0F4C5C] mb-2">{labels[result.score]}</h2>
+          <p className="text-[#66B2B2] text-sm mb-6">
+            {result.total > 0
+              ? `${result.correct} / ${result.total} дұрыс жауап (${result.pct}%)`
+              : 'Ашық сұрақтар орындалды'}
+          </p>
+          {violations.length > 0 && (
+            <div className="mb-6 p-3 rounded-xl text-left" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+              <p className="text-xs font-black text-red-600">⚠ {violations.length} бұзушылық тіркелді — мұғалімге хабарланды</p>
+            </div>
+          )}
+          <button onClick={() => navigate('/tasks')}
+            className="w-full py-3.5 rounded-2xl font-black text-sm text-white"
+            style={{ background: 'linear-gradient(135deg, #2F7F86, #0F4C5C)' }}>
+            Тапсырмаларға қайту
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0fafa' }}>
+        <div className="w-10 h-10 rounded-full border-4 border-[#BFE3E1] border-t-[#2F7F86] animate-spin" />
+      </div>
+    )
+  }
+
+  // ── No questions ──────────────────────────────────────────────────────────
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0fafa' }}>
+        <div className="text-center space-y-4">
+          <span className="material-symbols-outlined text-5xl text-[#BFE3E1]">quiz</span>
+          <p className="font-bold text-[#66B2B2]">Бұл сабақта сұрақтар жоқ</p>
+          <button onClick={() => navigate('/tasks')} className="px-6 py-2.5 rounded-xl font-bold text-sm text-white" style={{ background: '#2F7F86' }}>
+            Қайту
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const q = questions[currentQ]
+  const isOpen = q.type === 'open'
+  const currentAnswer = answers[currentQ]
+  const answered = Object.keys(answers).length
+  const total = questions.length
 
   return (
     <div className="min-h-screen flex flex-col overflow-hidden" style={{ background: '#f0fafa' }}>
@@ -104,16 +265,18 @@ export default function ActiveTestMode() {
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
             <span className="font-['Space_Grotesk'] font-black text-[10px] tracking-wider uppercase text-red-300">ТЖД</span>
           </div>
-          <span className="font-['Space_Grotesk'] font-bold text-xs tracking-wider uppercase text-white/70">
-            Алгебра: Квадрат теңдеу
+          <span className="font-['Space_Grotesk'] font-bold text-xs tracking-wider uppercase text-white/70 max-w-[200px] truncate">
+            {lesson ? `${lesson.subject || ''} ${lesson.subject ? '·' : ''} ${lesson.title}` : 'Тест'}
           </span>
         </div>
 
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-1.5 rounded-full"
-          style={{ background: timeLeft < 300 ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
-          <span className="material-symbols-outlined text-red-400 text-lg">timer</span>
-          <span className="font-['Space_Grotesk'] font-black text-xl text-red-400">{formatTime(timeLeft)}</span>
-        </div>
+        {timeLeft !== null && (
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-1.5 rounded-full"
+            style={{ background: timeLeft < 300 ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
+            <span className="material-symbols-outlined text-red-400 text-lg">timer</span>
+            <span className="font-['Space_Grotesk'] font-black text-xl text-red-400">{formatTime(timeLeft)}</span>
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full"
@@ -122,12 +285,12 @@ export default function ActiveTestMode() {
               {modelsLoaded ? 'verified_user' : 'pending'}
             </span>
             <span className="text-[10px] font-black uppercase tracking-widest text-[#BFE3E1]/80">
-              {modelsLoaded ? 'AI Белсенді' : loadingStatus}
+              {modelsLoaded ? 'AI Белсенді' : (loadingStatus || 'Жүктелуде...')}
             </span>
           </div>
-          {violations.length > 0 && (
+          {violations?.length > 0 && (
             <button onClick={() => setShowViolations(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
               style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)' }}>
               <span className="material-symbols-outlined text-red-400 text-sm">warning</span>
               <span className="text-red-300 text-[10px] font-black">{violations.length}</span>
@@ -136,26 +299,26 @@ export default function ActiveTestMode() {
         </div>
       </header>
 
-      {/* Warning banner */}
-      <div className="flex items-center justify-center gap-3 py-2 px-4 relative flex-shrink-0"
+      {/* Anti-cheat warning banner */}
+      <div className="flex items-center justify-center gap-3 py-2 px-4 flex-shrink-0"
         style={{ background: 'linear-gradient(90deg, #f59e0b, #d97706)' }}>
-        <span className="material-symbols-outlined text-white text-sm">warning</span>
+        <span className="material-symbols-outlined text-white text-sm">security</span>
         <p className="text-xs font-bold uppercase tracking-tight text-white">
-          Бетті ауыстырмаңыз. Барлық əрекеттер тіркеліп отыр.
+          Бетті ауыстырмаңыз · Барлық əрекеттер тіркеліп отыр · Камера белсенді
         </p>
       </div>
 
       {/* Alert toast */}
       {alertMsg && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl"
-          style={{ background: '#ef4444', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
+          style={{ background: '#ef4444', border: '1px solid rgba(255,255,255,0.2)' }}>
           <span className="material-symbols-outlined text-white text-sm">security</span>
           <span className="text-white font-black text-sm">{alertMsg}</span>
         </div>
       )}
 
       {/* Violations panel */}
-      {showViolations && violations.length > 0 && (
+      {showViolations && violations?.length > 0 && (
         <div className="fixed top-16 right-4 z-[150] w-72 rounded-2xl overflow-hidden shadow-2xl"
           style={{ background: '#0F4C5C', border: '1px solid rgba(239,68,68,0.3)' }}>
           <div className="px-4 py-3 flex justify-between items-center" style={{ background: 'rgba(239,68,68,0.15)' }}>
@@ -189,67 +352,70 @@ export default function ActiveTestMode() {
             <div className="mb-7">
               <div className="flex justify-between items-center mb-2">
                 <span className="font-['Space_Grotesk'] font-black text-sm uppercase tracking-widest text-[#0F4C5C]">
-                  Сұрақ {currentQ} / {total}
+                  Сұрақ {currentQ + 1} / {total}
                 </span>
-                <span className="text-[#66B2B2] text-xs font-bold">35% Орындалды</span>
+                <span className="text-[#66B2B2] text-xs font-bold">{answered} жауап берілді</span>
               </div>
               <div className="h-2 w-full rounded-full overflow-hidden" style={{ background: '#BFE3E1' }}>
                 <div className="h-full rounded-full transition-all"
-                  style={{ width: '35%', background: 'linear-gradient(90deg, #2F7F86, #0F4C5C)' }} />
+                  style={{ width: `${((currentQ + 1) / total) * 100}%`, background: 'linear-gradient(90deg, #2F7F86, #0F4C5C)' }} />
               </div>
             </div>
 
             {/* Question card */}
             <div className="rounded-3xl p-10 relative overflow-hidden"
               style={{ background: '#fff', boxShadow: '0 8px 40px rgba(15,76,92,0.08)', border: '1px solid #BFE3E1' }}>
-              <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full"
-                style={{ border: '24px solid #E6F4F3' }} />
+              <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full" style={{ border: '24px solid #E6F4F3' }} />
 
               <div className="relative z-10">
                 <span className="font-['Space_Grotesk'] text-6xl font-black block mb-2"
-                  style={{ color: 'rgba(15,76,92,0.06)' }}>07</span>
-                <h2 className="font-['Space_Grotesk'] text-2xl font-black text-[#0F4C5C] mb-8 leading-tight">
-                  Теңдеуді шешіңіз:{' '}
-                  <span className="px-3 py-1 rounded-xl font-black"
-                    style={{ background: 'rgba(191,227,225,0.4)', color: '#0F4C5C' }}>2x² + 5x - 3 = 0</span>
-                </h2>
+                  style={{ color: 'rgba(15,76,92,0.06)' }}>{String(currentQ + 1).padStart(2, '0')}</span>
+                <h2 className="font-['Space_Grotesk'] text-xl font-black text-[#0F4C5C] mb-8 leading-tight">{q.text}</h2>
 
-                <div className="space-y-3 mb-10">
-                  {answers.map((a) => (
-                    <button key={a.letter} onClick={() => setSelected(a.letter)}
-                      className="flex items-center w-full p-4 rounded-2xl text-[#0F4C5C] font-bold text-left group transition-all hover:-translate-y-0.5"
-                      style={selected === a.letter ? {
-                        border: '2px solid #2F7F86',
-                        background: 'linear-gradient(135deg, rgba(47,127,134,0.08), rgba(15,76,92,0.04))',
-                        boxShadow: '0 4px 16px rgba(47,127,134,0.12)',
-                      } : {
-                        border: '2px solid #BFE3E1',
-                        background: '#f8fdfc',
-                      }}>
-                      <span className="w-9 h-9 flex items-center justify-center rounded-xl mr-4 font-black text-sm transition-all flex-shrink-0"
-                        style={selected === a.letter ? {
-                          background: 'linear-gradient(135deg, #2F7F86, #0F4C5C)',
-                          color: '#fff',
-                        } : {
-                          background: '#E6F4F3',
-                          color: '#66B2B2',
-                        }}>
-                        {a.letter}
-                      </span>
-                      <span>{a.text}</span>
-                    </button>
-                  ))}
-                </div>
+                {isOpen ? (
+                  <textarea
+                    value={openText}
+                    onChange={e => setOpenText(e.target.value)}
+                    rows={4}
+                    placeholder="Жауабыңызды жазыңыз..."
+                    className="w-full p-4 rounded-2xl text-sm font-medium resize-none outline-none"
+                    style={{ border: '2px solid #BFE3E1', background: '#f8fdfc', color: '#0F4C5C' }}
+                  />
+                ) : (
+                  <div className="space-y-3 mb-10">
+                    {(q.options || []).map((opt, oi) => {
+                      const letter = LETTERS[oi]
+                      const selected = currentAnswer === letter
+                      return (
+                        <button key={oi} onClick={() => selectAnswer(letter)}
+                          className="flex items-center w-full p-4 rounded-2xl text-[#0F4C5C] font-bold text-left transition-all hover:-translate-y-0.5"
+                          style={selected ? {
+                            border: '2px solid #2F7F86',
+                            background: 'linear-gradient(135deg, rgba(47,127,134,0.08), rgba(15,76,92,0.04))',
+                            boxShadow: '0 4px 16px rgba(47,127,134,0.12)',
+                          } : { border: '2px solid #BFE3E1', background: '#f8fdfc' }}>
+                          <span className="w-9 h-9 flex items-center justify-center rounded-xl mr-4 font-black text-sm flex-shrink-0 transition-all"
+                            style={selected ? { background: 'linear-gradient(135deg, #2F7F86, #0F4C5C)', color: '#fff' } : { background: '#E6F4F3', color: '#66B2B2' }}>
+                            {letter}
+                          </span>
+                          <span>{opt}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
 
                 <div className="flex justify-between pt-6 border-t border-[#BFE3E1]">
-                  <button className="px-6 py-3 rounded-2xl border-2 border-[#BFE3E1] text-[#2F7F86] font-bold text-sm hover:bg-[#E6F4F3] transition-all flex items-center gap-2">
+                  <button onClick={goPrev} disabled={currentQ === 0}
+                    className="px-6 py-3 rounded-2xl border-2 border-[#BFE3E1] text-[#2F7F86] font-bold text-sm hover:bg-[#E6F4F3] transition-all disabled:opacity-30 flex items-center gap-2">
                     <span className="material-symbols-outlined text-sm">arrow_back</span>
                     Алдыңғы
                   </button>
-                  <button className="px-8 py-3 rounded-2xl font-bold text-sm text-white transition-all flex items-center gap-2"
+                  <button onClick={goNext}
+                    className="px-8 py-3 rounded-2xl font-bold text-sm text-white flex items-center gap-2"
                     style={{ background: 'linear-gradient(135deg, #2F7F86, #0F4C5C)', boxShadow: '0 4px 14px rgba(47,127,134,0.3)' }}>
-                    Келесі
-                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    {currentQ === total - 1 ? 'Аяқтау' : 'Келесі'}
+                    <span className="material-symbols-outlined text-sm">{currentQ === total - 1 ? 'flag' : 'arrow_forward'}</span>
                   </button>
                 </div>
               </div>
@@ -258,150 +424,78 @@ export default function ActiveTestMode() {
         </div>
 
         {/* Right surveillance panel */}
-        <aside className="w-[280px] flex flex-col gap-4 overflow-y-auto p-5 flex-shrink-0"
+        <aside className="w-[260px] flex flex-col gap-4 overflow-y-auto p-5 flex-shrink-0"
           style={{ background: 'linear-gradient(180deg, #0F4C5C 0%, #0a3a47 100%)', borderLeft: '1px solid rgba(102,178,178,0.1)' }}>
           {/* Live camera */}
           <div>
             <h3 className="font-['Space_Grotesk'] text-[9px] font-black text-[#BFE3E1]/50 tracking-[0.2em] uppercase mb-3">Live AI Monitor</h3>
-
-            <div className="relative rounded-xl overflow-hidden aspect-video"
-              style={{ background: '#000', border: '1px solid rgba(102,178,178,0.15)' }}>
-              {/* Real video */}
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{ transform: 'scaleX(-1)' }}
-              />
-              {/* Canvas overlay for landmarks */}
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0 w-full h-full"
-                style={{ transform: 'scaleX(-1)', opacity: 0.4 }}
-              />
-
+            <div className="relative rounded-xl overflow-hidden aspect-video" style={{ background: '#000', border: '1px solid rgba(102,178,178,0.15)' }}>
+              <video ref={videoRef} autoPlay muted playsInline
+                className="absolute inset-0 w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+              <canvas ref={canvasRef}
+                className="absolute inset-0 w-full h-full" style={{ transform: 'scaleX(-1)', opacity: 0.4 }} />
               {!cameraActive && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="material-symbols-outlined text-[#66B2B2] text-4xl">videocam_off</span>
                 </div>
               )}
-
-              {/* REC badge */}
               <div className="absolute top-2 left-2 flex items-center gap-1.5">
                 <div className={`w-1.5 h-1.5 rounded-full ${cameraActive ? 'bg-red-400 animate-ping' : 'bg-gray-500'}`} />
-                <span className="text-[8px] font-black text-white uppercase tracking-tighter">
-                  {cameraActive ? 'REC 720P' : 'КАМЕРА ЖОҚ'}
-                </span>
+                <span className="text-[8px] font-black text-white uppercase">{cameraActive ? 'REC' : 'ОФЛАЙН'}</span>
               </div>
-
-              {/* Face count badge */}
-              {metrics.faceCount > 0 && (
-                <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded"
-                  style={{ background: metrics.faceCount > 1 ? 'rgba(239,68,68,0.8)' : 'rgba(34,197,94,0.8)' }}>
+              {metrics?.faceCount > 1 && (
+                <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.85)' }}>
                   <span className="text-[8px] font-black text-white">{metrics.faceCount} БЕТ</span>
-                </div>
-              )}
-
-              {/* Phone warning */}
-              {metrics.phoneDetected && (
-                <div className="absolute bottom-2 left-2 right-2 px-2 py-1 rounded"
-                  style={{ background: 'rgba(239,68,68,0.9)' }}>
-                  <span className="text-[9px] font-black text-white">⚠ ТЕЛЕФОН АНЫҚТАЛДЫ</span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Metrics grid */}
+          {/* Metrics */}
           <div className="grid grid-cols-2 gap-2">
-            {/* Emotion */}
-            <div className="p-3 rounded-xl col-span-2"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="p-3 rounded-xl col-span-2" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
               <p className="text-[8px] text-[#BFE3E1]/40 font-black uppercase tracking-wider mb-1">Эмоция</p>
               <div className="flex items-center justify-between">
                 <span className="material-symbols-outlined text-sm text-[#66B2B2]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  {emotionIcon[metrics.emotion] || 'sentiment_neutral'}
+                  {emotionIcon[metrics?.emotion] || 'sentiment_neutral'}
                 </span>
                 <div className="text-right">
-                  <p className="text-xs font-['Space_Grotesk'] font-black text-[#BFE3E1]">{metrics.emotionKz}</p>
-                  <p className="text-[9px] text-[#BFE3E1]/50">{metrics.emotionScore}%</p>
+                  <p className="text-xs font-['Space_Grotesk'] font-black text-[#BFE3E1]">{metrics?.emotionKz || '—'}</p>
+                  <p className="text-[9px] text-[#BFE3E1]/50">{metrics?.emotionScore || 0}%</p>
                 </div>
               </div>
             </div>
 
-            {/* Attention */}
-            <div className="p-3 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
               <p className="text-[8px] text-[#BFE3E1]/40 font-black uppercase tracking-wider mb-1.5">Зейін</p>
               <div className="flex items-center justify-between">
                 <span className="material-symbols-outlined text-sm text-[#66B2B2]" style={{ fontVariationSettings: "'FILL' 1" }}>visibility</span>
                 <span className="text-xs font-['Space_Grotesk'] font-black"
-                  style={{ color: metrics.attention >= 70 ? '#22c55e' : metrics.attention >= 40 ? '#f59e0b' : '#ef4444' }}>
-                  {metrics.attention}%
+                  style={{ color: (metrics?.attention || 0) >= 70 ? '#22c55e' : (metrics?.attention || 0) >= 40 ? '#f59e0b' : '#ef4444' }}>
+                  {metrics?.attention || 0}%
                 </span>
               </div>
             </div>
 
-            {/* Pulse */}
-            <div className="p-3 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <p className="text-[8px] text-[#BFE3E1]/40 font-black uppercase tracking-wider mb-1.5">Пульс</p>
-              <div className="flex items-center justify-between">
-                <span className="material-symbols-outlined text-sm text-red-400" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
-                <span className="text-xs font-['Space_Grotesk'] font-black text-white">
-                  {metrics.pulse > 0 ? `${metrics.pulse} bpm` : '—'}
-                </span>
-              </div>
-            </div>
-
-            {/* Face verification */}
-            <div className="p-3 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
               <p className="text-[8px] text-[#BFE3E1]/40 font-black uppercase tracking-wider mb-1.5">Тұлға</p>
               <div className="flex items-center justify-between">
-                <span className="material-symbols-outlined text-sm" style={{ color: metrics.faceVerified ? '#22c55e' : '#f59e0b', fontVariationSettings: "'FILL' 1" }}>
-                  {metrics.faceVerified ? 'person_check' : 'person_search'}
+                <span className="material-symbols-outlined text-sm" style={{ color: metrics?.faceVerified ? '#22c55e' : metrics?.faceEnrolled ? '#ef4444' : '#f59e0b', fontVariationSettings: "'FILL' 1" }}>
+                  {metrics?.faceVerified ? 'verified_user' : metrics?.faceEnrolled ? 'warning' : 'face_unlock'}
                 </span>
                 <span className="text-xs font-['Space_Grotesk'] font-black"
-                  style={{ color: metrics.faceVerified ? '#22c55e' : '#f59e0b' }}>
-                  {metrics.faceVerified ? 'OK' : 'Тексеру'}
+                  style={{ color: metrics?.faceVerified ? '#22c55e' : metrics?.faceEnrolled ? '#ef4444' : '#f59e0b' }}>
+                  {metrics?.faceVerified ? 'OK' : metrics?.faceEnrolled ? 'Сәйкес емес' : 'Оқыту...'}
                 </span>
               </div>
             </div>
 
-            {/* Blink rate */}
-            <div className="p-3 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <p className="text-[8px] text-[#BFE3E1]/40 font-black uppercase tracking-wider mb-1.5">Жыпылықтау</p>
-              <div className="flex items-center justify-between">
-                <span className="material-symbols-outlined text-sm text-[#BFE3E1]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  {metrics.blinkRate > 25 ? 'warning' : 'eye_tracking'}
-                </span>
-                <span className="text-xs font-['Space_Grotesk'] font-black"
-                  style={{ color: metrics.blinkRate > 25 ? '#f59e0b' : '#BFE3E1' }}>
-                  {metrics.blinkRate}/мин
-                </span>
+            <div className="p-3 rounded-xl col-span-2" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <p className="text-[8px] text-[#BFE3E1]/40 font-black uppercase tracking-wider mb-1.5">Зейін деңгейі</p>
+              <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${metrics?.attention || 0}%`, background: (metrics?.attention || 0) >= 70 ? '#22c55e' : (metrics?.attention || 0) >= 40 ? '#f59e0b' : '#ef4444' }} />
               </div>
-            </div>
-          </div>
-
-          {/* Attention bar */}
-          <div className="px-1">
-            <div className="flex justify-between mb-1">
-              <span className="text-[9px] text-[#BFE3E1]/40 font-black uppercase tracking-wider">Зейін деңгейі</span>
-              <span className="text-[9px] font-black"
-                style={{ color: metrics.attention >= 70 ? '#22c55e' : metrics.attention >= 40 ? '#f59e0b' : '#ef4444' }}>
-                {metrics.attention >= 70 ? 'Жақсы' : metrics.attention >= 40 ? 'Орташа' : 'Төмен'}
-              </span>
-            </div>
-            <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${metrics.attention}%`,
-                  background: metrics.attention >= 70 ? '#22c55e' : metrics.attention >= 40 ? '#f59e0b' : '#ef4444',
-                }} />
             </div>
           </div>
 
@@ -409,29 +503,17 @@ export default function ActiveTestMode() {
           <div>
             <h3 className="font-['Space_Grotesk'] text-[9px] font-black text-[#BFE3E1]/40 tracking-[0.2em] uppercase mb-3">Сұрақтар картасы</h3>
             <div className="grid grid-cols-5 gap-1.5">
-              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
-                const done = n < currentQ
+              {questions.map((_, n) => {
+                const done = answers[n] !== undefined
                 const current = n === currentQ
                 return (
-                  <div key={n}
+                  <button key={n} onClick={() => { setCurrentQ(n); setOpenText(questions[n]?.type === 'open' ? (answers[n] || '') : '') }}
                     className="aspect-square rounded-lg flex items-center justify-center text-[9px] font-black transition-all"
-                    style={
-                      current ? {
-                        border: '2px solid #66B2B2',
-                        color: '#66B2B2',
-                        boxShadow: '0 0 8px rgba(102,178,178,0.3)',
-                      } : done ? {
-                        background: 'rgba(47,127,134,0.25)',
-                        border: '1px solid rgba(102,178,178,0.3)',
-                        color: '#BFE3E1',
-                      } : {
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                        color: 'rgba(255,255,255,0.2)',
-                      }
-                    }>
-                    {String(n).padStart(2, '0')}
-                  </div>
+                    style={current ? { border: '2px solid #66B2B2', color: '#66B2B2', boxShadow: '0 0 8px rgba(102,178,178,0.3)' }
+                      : done ? { background: 'rgba(47,127,134,0.25)', border: '1px solid rgba(102,178,178,0.3)', color: '#BFE3E1' }
+                      : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.2)' }}>
+                    {String(n + 1).padStart(2, '0')}
+                  </button>
                 )
               })}
             </div>
@@ -454,41 +536,32 @@ export default function ActiveTestMode() {
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
           style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px)' }}>
-          <div className="fixed inset-0 pointer-events-none animate-pulse"
-            style={{ border: '16px solid rgba(239,68,68,0.15)' }} />
-
+          <div className="fixed inset-0 pointer-events-none animate-pulse" style={{ border: '16px solid rgba(239,68,68,0.1)' }} />
           <div className="relative w-full max-w-md rounded-3xl p-8 text-center"
             style={{ background: '#fff', border: '2px solid #fca5a5', boxShadow: '0 24px 80px rgba(239,68,68,0.12)' }}>
-            <div className="absolute top-0 left-0 right-0 h-1 rounded-t-3xl bg-red-400" />
-
             <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
               style={{ background: '#fef2f2', border: '2px solid #fca5a5' }}>
-              <span className="material-symbols-outlined text-red-400 text-4xl">warning</span>
+              <span className="material-symbols-outlined text-red-400 text-4xl">flag</span>
             </div>
-
-            <h2 className="font-['Space_Grotesk'] text-2xl font-black text-[#0F4C5C] mb-2">
-              Тестті аяқтаймысыз?
-            </h2>
+            <h2 className="font-['Space_Grotesk'] text-2xl font-black text-[#0F4C5C] mb-2">Тестті аяқтаймысыз?</h2>
             <p className="text-[#66B2B2] text-sm mb-4">
-              {currentQ} / {total} сұраққа жауап берілді.
+              {answered} / {total} сұраққа жауап берілді.
+              {answered < total && <span className="text-amber-500 font-bold"> {total - answered} жауапсыз!</span>}
             </p>
-
-            {violations.length > 0 && (
-              <div className="mb-6 p-3 rounded-xl text-left"
-                style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-                <p className="text-xs font-black text-red-600 mb-1">⚠ {violations.length} бұзушылық тіркелді</p>
-                <p className="text-[10px] text-red-500">Мұғалімге хабарланады</p>
+            {violations?.length > 0 && (
+              <div className="mb-6 p-3 rounded-xl text-left" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                <p className="text-xs font-black text-red-600">⚠ {violations.length} бұзушылық тіркелді — мұғалімге хабарланады</p>
               </div>
             )}
-
             <div className="flex gap-4">
               <button onClick={() => setShowModal(false)}
                 className="flex-1 py-3 rounded-2xl border-2 border-[#BFE3E1] text-[#2F7F86] font-black text-sm hover:bg-[#E6F4F3] transition-all">
                 Жалғастыру
               </button>
-              <button className="flex-1 py-3 rounded-2xl font-black text-sm text-white transition-all"
+              <button onClick={handleFinish} disabled={submitting}
+                className="flex-1 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #2F7F86, #0F4C5C)' }}>
-                Аяқтау
+                {submitting ? 'Жіберілуде...' : 'Тапсыру'}
               </button>
             </div>
           </div>

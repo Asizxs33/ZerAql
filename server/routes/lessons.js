@@ -27,13 +27,26 @@ router.get('/', requireAuth, async (req, res) => {
   }
 })
 
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT l.*, u.full_name AS teacher_name FROM lessons l JOIN users u ON u.id = l.teacher_id WHERE l.id = $1`,
+      [req.params.id]
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'Табылмады' })
+    res.json(rows[0])
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 router.post('/', requireAuth, async (req, res) => {
-  const { title, subject, class_name, difficulty, duration, max_score, status } = req.body
+  const { title, subject, class_name, difficulty, duration, max_score, status, questions, lesson_type } = req.body
   if (!title) return res.status(400).json({ error: 'Тақырып қажет' })
   try {
     const { rows } = await pool.query(
-      'INSERT INTO lessons (title, subject, class_name, teacher_id, difficulty, duration, max_score, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [title, subject || null, class_name || null, req.user.id, difficulty ?? 50, duration ?? 45, max_score ?? 100, status ?? 'draft']
+      'INSERT INTO lessons (title, subject, class_name, teacher_id, difficulty, duration, max_score, status, questions, lesson_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [title, subject || null, class_name || null, req.user.id, difficulty ?? 50, duration ?? 45, max_score ?? 100, status ?? 'draft', JSON.stringify(questions || []), lesson_type || 'quiz']
     )
     res.json(rows[0])
   } catch (e) {
@@ -42,11 +55,11 @@ router.post('/', requireAuth, async (req, res) => {
 })
 
 router.put('/:id', requireAuth, async (req, res) => {
-  const { title, subject, class_name, difficulty, duration, max_score, status } = req.body
+  const { title, subject, class_name, difficulty, duration, max_score, status, questions, lesson_type } = req.body
   try {
     const { rows } = await pool.query(
-      'UPDATE lessons SET title=$1, subject=$2, class_name=$3, difficulty=$4, duration=$5, max_score=$6, status=$7 WHERE id=$8 AND teacher_id=$9 RETURNING *',
-      [title, subject, class_name, difficulty, duration, max_score, status, req.params.id, req.user.id]
+      'UPDATE lessons SET title=$1, subject=$2, class_name=$3, difficulty=$4, duration=$5, max_score=$6, status=$7, questions=$8, lesson_type=$9 WHERE id=$10 AND teacher_id=$11 RETURNING *',
+      [title, subject, class_name, difficulty, duration, max_score, status, JSON.stringify(questions || []), lesson_type || 'quiz', req.params.id, req.user.id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'Табылмады' })
     res.json(rows[0])

@@ -44,7 +44,15 @@ export default function StudentDashboard() {
   const aiMetrics = [
     { label: 'Эмоция', icon: EMOTION_ICON[metrics.emotion] || 'mood', value: cameraActive ? (metrics.emotionKz || 'Бейтарап') : '—', stat: cameraActive ? 'Белсенді' : '—', subIcon: 'trending_up', subColor: '#16a34a', accent: '#2F7F86' },
     { label: 'Зейін', icon: 'ads_click', value: cameraActive ? (attention >= 70 ? 'Фокус' : 'Шашыраңқы') : '—', stat: cameraActive ? `${attention}%` : '—', subIcon: 'my_location', subColor: attention >= 70 ? '#22c55e' : '#f59e0b', accent: '#0F4C5C' },
-    { label: 'Тұлға', icon: metrics.faceVerified ? 'verified_user' : 'face_unlock', value: cameraActive ? (metrics.faceVerified ? 'Расталды' : 'Ізделуде...') : '—', stat: cameraActive ? (metrics.faceCount > 0 ? 'Иә' : 'Жоқ') : '—', subIcon: 'check_circle', subColor: metrics.faceVerified ? '#16a34a' : '#66B2B2', accent: '#2F7F86' },
+    {
+      label: 'Тұлға',
+      icon: !cameraActive ? 'face' : metrics.faceVerified ? 'verified_user' : metrics.faceEnrolled ? 'warning' : metrics.faceCount > 0 ? 'face_unlock' : 'face',
+      value: !cameraActive ? '—' : metrics.faceVerified ? 'Расталды' : metrics.faceEnrolled ? 'Сәйкес емес!' : metrics.faceCount > 0 ? 'Оқыту...' : 'Сканерлеу',
+      stat: !cameraActive ? '—' : metrics.faceVerified ? 'Face ID ✓' : metrics.faceEnrolled ? 'Бұзушылық' : metrics.faceCount > 0 ? 'Жазылуда' : 'Бет жоқ',
+      subIcon: !cameraActive ? 'radio_button_unchecked' : metrics.faceVerified ? 'check_circle' : metrics.faceEnrolled ? 'error' : 'hourglass_top',
+      subColor: !cameraActive ? '#9ca3af' : metrics.faceVerified ? '#16a34a' : metrics.faceEnrolled ? '#ef4444' : '#f59e0b',
+      accent: !cameraActive ? '#9ca3af' : metrics.faceVerified ? '#16a34a' : metrics.faceEnrolled ? '#ef4444' : '#f59e0b',
+    },
     { label: 'Пульс', icon: 'favorite', value: cameraActive && pulse > 0 ? `${pulse} bpm` : '—', pulse: true, accent: '#ef4444' },
   ]
 

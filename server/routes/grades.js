@@ -36,11 +36,13 @@ router.get('/', requireAuth, async (req, res) => {
 
 router.post('/', requireAuth, async (req, res) => {
   const { student_id, lesson_id, subject, score, grade_date } = req.body
-  if (!student_id || score === undefined) return res.status(400).json({ error: 'student_id және score қажет' })
+  // Students can submit their own grade (self-assessment after test)
+  const effectiveStudentId = req.user.role === 'student' ? req.user.id : student_id
+  if (!effectiveStudentId || score === undefined) return res.status(400).json({ error: 'student_id және score қажет' })
   try {
     const { rows } = await pool.query(
       'INSERT INTO grades (student_id, lesson_id, subject, score, grade_date) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [student_id, lesson_id || null, subject || null, score, grade_date || new Date().toISOString().split('T')[0]]
+      [effectiveStudentId, lesson_id || null, subject || null, score, grade_date || new Date().toISOString().split('T')[0]]
     )
     res.json(rows[0])
   } catch (e) {

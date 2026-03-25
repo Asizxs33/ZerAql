@@ -112,7 +112,7 @@ export function useProctoring({ enabled = true, onViolation, onMetricsUpdate } =
   const [metrics, setMetrics] = useState({
     emotion: 'neutral', emotionKz: 'Бейтарап', emotionScore: 0,
     attention: 0, pulse: 0, blinkRate: 0,
-    faceVerified: false, faceCount: 0,
+    faceVerified: false, faceEnrolled: false, faceCount: 0,
     phoneDetected: false, faceCovered: false,
     estimatedAge: null,
   })
@@ -356,6 +356,7 @@ export function useProctoring({ enabled = true, onViolation, onMetricsUpdate } =
         pulse: lastPulseRef.current || 0,
         blinkRate,
         faceVerified,
+        faceEnrolled: !!faceDescRef.current,
         faceCount,
         phoneDetected: false,
         faceCovered: false,

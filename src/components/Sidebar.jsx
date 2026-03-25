@@ -17,6 +17,7 @@ const teacherNav = [
   { icon: 'edit_note', label: 'Сабақ жасау', path: '/create-lesson' },
   { icon: 'auto_stories', label: 'Журнал', path: '/journal' },
   { icon: 'bar_chart', label: 'Аналитика', path: '/teacher-analytics' },
+  { icon: 'psychology', label: 'Болжау (ML)', path: '/prediction' },
   { icon: 'military_tech', label: 'Рейтинг', path: '/leaderboard' },
 ]
 
