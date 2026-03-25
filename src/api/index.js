@@ -1,4 +1,4 @@
-const BASE = '/api'
+const BASE = 'https://zeraql.onrender.com/api'
 
 async function req(path, opts = {}) {
   const token = localStorage.getItem('zeraql_token')
