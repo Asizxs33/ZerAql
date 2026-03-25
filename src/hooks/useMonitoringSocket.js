@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { io } from 'socket.io-client'
 
-const WS_URL = 'http://localhost:3001'
+// Production WebSocket URL (Render)
+const WS_URL = 'https://zeraql.onrender.com'
 
 // ── Student hook ──────────────────────────────────────────────────────────
 export function useStudentMonitoring({ studentId, studentName, classId, enabled = true }) {
