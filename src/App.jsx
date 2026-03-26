@@ -21,6 +21,7 @@ import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 import PerformancePrediction from './pages/PerformancePrediction'
 import KundeligImport from './pages/KundeligImport'
+import ComparisonMap from './pages/ComparisonMap'
 
 function ProtectedRoute({ children, role }) {
   const { user, loading } = useAuth()
@@ -86,6 +87,7 @@ function AppRoutes() {
         <Route path="/prediction" element={<ProtectedRoute role="teacher"><PerformancePrediction /></ProtectedRoute>} />
         <Route path="/student-analytics/:studentId" element={<ProtectedRoute role="teacher"><StudentAnalyticsTeacherView /></ProtectedRoute>} />
         <Route path="/kundelig" element={<ProtectedRoute role="teacher"><KundeligImport /></ProtectedRoute>} />
+        <Route path="/map" element={<ProtectedRoute role="teacher"><ComparisonMap /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
