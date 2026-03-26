@@ -11,6 +11,7 @@ import gradeRoutes from './routes/grades.js'
 import monitoringRoutes from './routes/monitoring.js'
 import classesRoutes from './routes/classes.js'
 import aiRoutes from './routes/ai.js'
+import journalRoutes from './routes/journal.js'
 
 dotenv.config()
 
@@ -30,6 +31,7 @@ app.use('/api/grades', gradeRoutes)
 app.use('/api/monitoring', monitoringRoutes)
 app.use('/api/classes', classesRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/journal', journalRoutes)
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
 

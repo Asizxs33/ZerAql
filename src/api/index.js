@@ -54,4 +54,20 @@ export const api = {
 
   // Student analytics (teacher view)
   getStudentAnalytics: (studentId) => req(`/users/students/${studentId}/analytics`),
+
+  // Күнделік.kz journal import/export
+  importJournal: (file) => {
+    const token = localStorage.getItem('zeraql_token')
+    const fd = new FormData(); fd.append('file', file)
+    return fetch(`${BASE}/journal/import`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    }).then(r => r.json()).then(d => { if (d.error) throw new Error(d.error); return d })
+  },
+  exportJournal: () => {
+    const token = localStorage.getItem('zeraql_token')
+    return fetch(`${BASE}/journal/export`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.blob())
+  },
 }

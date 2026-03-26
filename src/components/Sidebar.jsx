@@ -18,6 +18,7 @@ const teacherNav = [
   { icon: 'auto_stories', label: 'Журнал', path: '/journal' },
   { icon: 'bar_chart', label: 'Аналитика', path: '/teacher-analytics' },
   { icon: 'psychology', label: 'Болжау (ML)', path: '/prediction' },
+  { icon: 'table_view', label: 'Күнделік импорт', path: '/kundelig' },
   { icon: 'military_tech', label: 'Рейтинг', path: '/leaderboard' },
 ]
 
