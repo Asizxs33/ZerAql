@@ -146,6 +146,14 @@ export default function ActiveTestMode() {
 
   const handleFinish = async () => {
     if (submitting || result) return
+    // Block submit if Face ID not verified
+    if (cameraActive && !metrics?.faceVerified) {
+      setShowModal(false)
+      setAlertMsg('Face ID расталмаған — тестті тапсыру мүмкін емес!')
+      if (alertTimeout.current) clearTimeout(alertTimeout.current)
+      alertTimeout.current = setTimeout(() => setAlertMsg(null), 4000)
+      return
+    }
     setSubmitting(true)
     setShowModal(false)
 
@@ -600,8 +608,14 @@ export default function ActiveTestMode() {
               {answered < total && <span className="text-amber-500 font-bold"> {total - answered} жауапсыз!</span>}
             </p>
             {violations?.length > 0 && (
-              <div className="mb-6 p-3 rounded-xl text-left" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+              <div className="mb-4 p-3 rounded-xl text-left" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
                 <p className="text-xs font-black text-red-600">⚠ {violations.length} бұзушылық тіркелді — мұғалімге хабарланады</p>
+              </div>
+            )}
+            {cameraActive && !metrics?.faceVerified && (
+              <div className="mb-4 p-3 rounded-xl text-left flex items-center gap-2" style={{ background: '#fff7ed', border: '1.5px solid #fed7aa' }}>
+                <span className="material-symbols-outlined text-sm text-orange-500" style={{ fontVariationSettings: "'FILL' 1" }}>face_retouching_off</span>
+                <p className="text-xs font-black text-orange-700">Face ID расталмаған — тестті тапсыру үшін камераға қараңыз</p>
               </div>
             )}
             <div className="flex gap-4">
@@ -609,10 +623,10 @@ export default function ActiveTestMode() {
                 className="flex-1 py-3 rounded-2xl border-2 border-[#BFE3E1] text-[#2F7F86] font-black text-sm hover:bg-[#E6F4F3] transition-all">
                 Жалғастыру
               </button>
-              <button onClick={handleFinish} disabled={submitting}
-                className="flex-1 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-50"
+              <button onClick={handleFinish} disabled={submitting || (cameraActive && !metrics?.faceVerified)}
+                className="flex-1 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg, #2F7F86, #0F4C5C)' }}>
-                {submitting ? 'Жіберілуде...' : 'Тапсыру'}
+                {submitting ? 'Жіберілуде...' : cameraActive && !metrics?.faceVerified ? '🔒 Face ID қажет' : 'Тапсыру'}
               </button>
             </div>
           </div>
