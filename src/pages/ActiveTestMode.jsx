@@ -471,8 +471,68 @@ export default function ActiveTestMode() {
   const answered = Object.keys(answers).length
   const total = questions.length
 
+  // ── Face ID gate: block entire test if camera on but face not verified ─────
+  const faceBlocked = cameraActive && modelsLoaded && metrics?.faceEnrolled && !metrics?.faceVerified
+  const faceScanning = cameraActive && modelsLoaded && !metrics?.faceEnrolled
+
   return (
     <div className="min-h-screen flex flex-col overflow-hidden" style={{ background: '#f0fafa' }}>
+
+      {/* ── Face ID blocking overlay ─────────────────────────────────────── */}
+      {(faceBlocked || faceScanning) && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center"
+          style={{ background: faceBlocked ? 'rgba(15,20,30,0.92)' : 'rgba(15,20,30,0.75)', backdropFilter: 'blur(8px)' }}>
+          <div className="w-full max-w-sm mx-4 rounded-3xl p-8 text-center space-y-5"
+            style={{ background: '#fff', border: faceBlocked ? '2px solid #fecaca' : '2px solid #BFE3E1' }}>
+
+            {faceBlocked ? (
+              <>
+                {/* Mismatch — hard block */}
+                <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto"
+                  style={{ background: '#fef2f2', border: '2px solid #fecaca' }}>
+                  <span className="material-symbols-outlined text-5xl text-red-500" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    person_off
+                  </span>
+                </div>
+                <div>
+                  <h2 className="font-['Space_Grotesk'] font-black text-xl text-[#0F4C5C]">Face ID расталмады</h2>
+                  <p className="text-sm text-[#66B2B2] mt-2">Тіркелген тұлғамен сәйкес келмейді.<br/>Тестті жалғастыру үшін камераға тікелей қараңыз.</p>
+                </div>
+                <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-2xl"
+                  style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-xs font-black text-red-600">Бұзушылық тіркелді — мұғалімге хабарланды</span>
+                </div>
+                <button onClick={() => navigate('/tasks')}
+                  className="w-full py-3 rounded-2xl font-black text-sm border-2 border-[#BFE3E1] text-[#2F7F86] hover:bg-[#E6F4F3] transition-all">
+                  Тапсырмаларға шығу
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Still enrolling — soft wait */}
+                <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto"
+                  style={{ background: '#E6F4F3', border: '2px solid #BFE3E1' }}>
+                  <span className="material-symbols-outlined text-5xl text-[#2F7F86] animate-pulse" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    face_unlock
+                  </span>
+                </div>
+                <div>
+                  <h2 className="font-['Space_Grotesk'] font-black text-xl text-[#0F4C5C]">Face ID сканерлеуде...</h2>
+                  <p className="text-sm text-[#66B2B2] mt-2">Камераға тікелей қараңыз.<br/>Жүйе сіздің тұлғаңызды тіркеп жатыр.</p>
+                </div>
+                <div className="flex justify-center gap-1.5">
+                  {[0,1,2,3,4].map(i => (
+                    <div key={i} className="w-2 h-2 rounded-full bg-[#BFE3E1] animate-pulse"
+                      style={{ animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top bar */}
       <header className="h-14 flex items-center justify-between px-6 z-50 flex-shrink-0"
         style={{ background: 'linear-gradient(90deg, #0F4C5C, #1a6474)', borderBottom: '1px solid rgba(102,178,178,0.15)' }}>
