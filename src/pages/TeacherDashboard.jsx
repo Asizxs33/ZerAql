@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import TopBar from '../components/TopBar'
@@ -63,6 +63,24 @@ export default function TeacherDashboard() {
   const classId = classesList[0]?.id || null
   const { connected: wsConnected, students: wsStudents, alerts: wsAlerts, violations: wsViolations } =
     useTeacherMonitoring({ teacherId: user?.id, classId, enabled: !!classId })
+
+  // Alert teacher when a new violation comes in
+  const prevViolationCount = useRef(0)
+  useEffect(() => {
+    if (wsViolations.length > prevViolationCount.current) {
+      prevViolationCount.current = wsViolations.length
+      // Browser notification
+      if (Notification.permission === 'granted') {
+        const v = wsViolations[0]
+        new Notification(`⚠ Бұзушылық: ${v.studentName}`, {
+          body: v.violation?.message || v.violation?.type,
+          icon: '/favicon.ico',
+        })
+      } else if (Notification.permission === 'default') {
+        Notification.requestPermission()
+      }
+    }
+  }, [wsViolations.length])
 
   // Dynamic stats
   const activeLessons = lessons.filter(l => l.status === 'active')
@@ -226,6 +244,37 @@ export default function TeacherDashboard() {
                 </span>
               </div>
             ))}
+
+            {/* Violations panel */}
+            {wsViolations.length > 0 && (
+              <div className="rounded-2xl overflow-hidden" style={{ border: '1.5px solid #fecaca', background: '#fff5f5' }}>
+                <div className="flex items-center gap-2 px-5 py-3" style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+                  <span className="material-symbols-outlined text-base text-red-500" style={{ fontVariationSettings: "'FILL' 1" }}>gpp_bad</span>
+                  <span className="font-['Space_Grotesk'] font-black text-sm text-red-700">Бұзушылықтар</span>
+                  <span className="ml-auto bg-red-500 text-white text-xs font-black px-2 py-0.5 rounded-full">{wsViolations.length}</span>
+                </div>
+                <div className="divide-y divide-red-100 max-h-48 overflow-y-auto">
+                  {wsViolations.slice(0, 20).map((v) => (
+                    <div key={v.id} className="flex items-center gap-3 px-5 py-2.5">
+                      <span className="material-symbols-outlined text-sm text-red-400" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        {v.violation?.type === 'tab_switch' ? 'tab_unselected'
+                          : v.violation?.type === 'face_missing' ? 'face_retouching_off'
+                          : v.violation?.type === 'multiple_faces' ? 'group'
+                          : v.violation?.type === 'face_mismatch' ? 'person_off'
+                          : 'warning'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-red-700 truncate">{v.studentName}</p>
+                        <p className="text-[11px] text-red-500 truncate">{v.violation?.message || v.violation?.type}</p>
+                      </div>
+                      <span className="text-[10px] text-gray-400 shrink-0">
+                        {new Date(v.timestamp).toLocaleTimeString('kk-KZ')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Students section */}
             <section>
