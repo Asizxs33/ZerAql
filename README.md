@@ -1,16 +1,94 @@
-# React + Vite
+# ZerAql - AI-Powered EdTech Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**ZerAql** — это инновационная образовательная платформа для казахстанских школ, объединяющая возможности компьютерного зрения (Computer Vision) и генеративного искусственного интеллекта (Generative AI) для трансформации процесса обучения. Проект разработан в рамках хакатона за 24 часа.
 
-Currently, two official plugins are available:
+## 🚀 Ключевые фичи (Что делает проект уникальным?)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### 1. Live AI Proctoring & Monitoring (Компьютерное зрение)
+Встроенная система прокторинга, которая работает **полностью на стороне клиента (в браузере)**, не отправляя видеопоток на сервер (максимальная конфиденциальность и нулевая задержка).
+- **Распознавание лиц (Face ID)**: Система проверяет, находится ли за экраном нужный ученик.
+- **Оценка вовлеченности (Attention Tracking)**: Анализ направления взгляда и положения головы. Если ученик отвлекается от экрана во время урока, система фиксирует падение внимания.
+- **Анализ эмоций (Emotion Recognition)**: ИИ понимает, когда ученик смущен, расстроен или радуется, и отправляет эти метрики учителю.
+- *Технология:* `face-api.js` (TensorFlow.js WebGL), оптимизированный цикл обработки кадров (Frame-skipping алгоритм) для снижения нагрузки на CPU.
 
-## React Compiler
+### 2. Умная панель учителя (Real-time Teacher Analytics)
+Учителю не нужно ждать конца урока, чтобы понять, кто как занимался.
+- **Live-дашборд**: Через `Socket.io` учитель в реальном времени видит «пульс» всего класса: у кого падает фокус, кто отсутствует, у кого негативные эмоции.
+- **AI-рекомендации**: ИИ анализирует исторические данные (оценки + метрики внимания) и генерирует персональные стратегии обучения для каждого ученика (Predictive Analytics).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 3. Генерация умного контента (GenAI)
+Избавление учителей от рутины создания материалов.
+- Интеграция с **OpenAI API (gpt-4o-mini)**.
+- ИИ может автоматически генерировать интерактивные уроки, викторины (квесты) и тесты на казахском языке с учетом локального контекста казахстанских школ (на базе `kz_curriculum.json`).
 
-## Expanding the ESLint configuration
+### 4. Ролевые дашборды с премиум UI/UX
+- **Student Dashboard**: Геймифицированная статистика (рейтинги, средние баллы, графики внимания), доступ к своим урокам и персональной аналитике.
+- **Teacher Dashboard**: Инструменты для создания контента, управления классами и глубокого мониторинга успеваемости.
+- Интерфейс построен с использованием принципов Glassmorphism, современных градиентов и плавной анимации (TailwindCSS).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+---
+
+## 🛠 Технический стек
+
+**Frontend (Client-side):**
+- **React 18** + **Vite** (для сверхбыстрой сборки и HMR)
+- **Tailwind CSS** (стилизация)
+- **face-api.js** (ML-модели: SSD Mobilenet v1, Face Landmark 68)
+- **React Router v6**
+
+**Backend (Server-side):**
+- **Node.js** & **Express.js** (выбран за асинхронную природу, идеально подходящую для WebSockets)
+- **Socket.io** (для двусторонней связи реального времени между студентами и учителем)
+- **OpenAI API** (для генерации текстового контента и аналитики)
+
+**Database (Хранение данных):**
+- **PostgreSQL** (развернуто в облаке **Neon** для высокой доступности)
+- Реляционная архитектура (пользователи, классы, уроки, оценки, логи мониторинга)
+
+---
+
+## 🧠 Архитектурные решения (Для Жюри)
+
+1. **Edge computing для ML:** Визуальные модели загружаются из `/public/models` и выполняются на GPU/CPU устройства пользователя через WebGL. Это решает проблему совместимости, масштабируемости (сервер не обрабатывает видео) и приватности.
+2. **Оптимизация WebSocket:** Использование `studentSessions` Map-структуры на бэкенде для отслеживания состояния сотен учеников без лишних запросов в БД.
+3. **CORS и Микросервисная архитектура:** Разделение статичного фронтенда (развернутого глобально на **Vercel** CDN) от динамичного бэкенда с постоянным подключением WebSocket (развернутого на **Render.com**).
+
+---
+
+## 💾 Установка и запуск (Local Development)
+
+### 1. Клонирование репозитория
+```bash
+git clone https://github.com/Asizxs33/ZerAql.git
+cd ZerAql-React
+```
+
+### 2. Настройка Environment Variables
+Создайте файл `.env` в корне проекта со следующими переменными:
+```env
+DATABASE_URL=ваша_ссылка_на_neon_postgres
+JWT_SECRET=zeraql_jwt_secret_key_2024
+PORT=3001
+OPENAI_API_KEY=ваш_ключ_openai
+```
+
+### 3. Запуск Backend-сервера
+В отдельном терминале запустите сервер:
+```bash
+npm install # если еще не установлены зависимости бэкенда
+npm run server
+```
+*Сервер запустится на http://localhost:3001 и инициализирует базу данных.*
+
+### 4. Запуск Frontend-приложения
+Во втором терминале запустите React (Vite):
+```bash
+npm install
+npm run dev
+```
+*Клиент запустится на http://localhost:5173.*
+
+---
+
+## 👥 Команда
+Разработано с душой и бессонными ночами на хакатоне. **ZerAql** — потому что интеллект должен быть острым и безграничным.
