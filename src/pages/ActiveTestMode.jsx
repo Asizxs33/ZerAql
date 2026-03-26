@@ -4,6 +4,7 @@ import { useGlobalProctoring } from '../context/ProctoringContext'
 import { useStudentMonitoring } from '../hooks/useMonitoringSocket'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api/index.js'
+import { useLocalAI } from '../hooks/useLocalAI'
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E']
 
@@ -38,8 +39,11 @@ export default function ActiveTestMode() {
   const [alertMsg, setAlertMsg] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null) // { score, correct, total }
+  const [openScores, setOpenScores] = useState({}) // qIndex → { score, label, color }
   const alertTimeout = useRef(null)
   const metricsHistory = useRef([])
+
+  const { status: aiStatus, loadModel, classifyAnswer } = useLocalAI()
 
   const { sendMetrics, sendViolation } = useStudentMonitoring({
     studentId: user?.id || 'demo',
@@ -51,6 +55,9 @@ export default function ActiveTestMode() {
     videoRef, canvasRef, modelsLoaded, cameraActive,
     metrics, violations, loadingStatus, enrollFace,
   } = useGlobalProctoring() || {}
+
+  // Preload local AI model in background
+  useEffect(() => { loadModel() }, [])
 
   // Load lesson + questions
   useEffect(() => {
@@ -142,17 +149,40 @@ export default function ActiveTestMode() {
     setSubmitting(true)
     setShowModal(false)
 
-    // Calculate score
+    // Score single-choice questions
     const singleQs = questions.filter(q => q.type === 'single')
     let correct = 0
-    singleQs.forEach((q, _) => {
+    singleQs.forEach((q) => {
       const qIdx = questions.indexOf(q)
       const selectedLetter = answers[qIdx]
       const correctLetter = LETTERS[q.answer ?? 0]
       if (selectedLetter === correctLetter) correct++
     })
 
-    const pct = singleQs.length > 0 ? correct / singleQs.length : 1
+    // Score open questions locally via Transformers.js (offline AI)
+    const openQs = questions.filter(q => q.type === 'open')
+    const openResults = {}
+    let openTotal = 0
+    if (openQs.length > 0 && aiStatus === 'ready') {
+      for (const q of openQs) {
+        const qIdx = questions.indexOf(q)
+        const studentAnswer = answers[qIdx] || ''
+        const modelAnswer = q.modelAnswer || q.text // fallback: use question as reference
+        if (studentAnswer.trim()) {
+          const result = await classifyAnswer(studentAnswer, modelAnswer)
+          openResults[qIdx] = result
+          openTotal += result.score
+        }
+      }
+      setOpenScores(openResults)
+    }
+
+    const singlePct = singleQs.length > 0 ? correct / singleQs.length : null
+    const openAvg = openQs.length > 0 && openTotal > 0 ? openTotal / openQs.length / 5 : null
+    const combined = singlePct !== null && openAvg !== null
+      ? (singlePct * singleQs.length + openAvg * openQs.length) / questions.length
+      : singlePct ?? openAvg ?? 1
+    const pct = combined
     const score = pct >= 0.8 ? 5 : pct >= 0.6 ? 4 : pct >= 0.4 ? 3 : pct >= 0.2 ? 2 : 1
 
     // Submit grade
@@ -182,7 +212,14 @@ export default function ActiveTestMode() {
       } catch {}
     }
 
-    setResult({ score, correct, total: singleQs.length, pct: Math.round(pct * 100) })
+    setResult({
+      score,
+      correct,
+      total: singleQs.length,
+      pct: Math.round(pct * 100),
+      openScored: Object.keys(openResults).length,
+      localAI: Object.keys(openResults).length > 0,
+    })
     setSubmitting(false)
   }
 
@@ -209,6 +246,13 @@ export default function ActiveTestMode() {
               ? `${result.correct} / ${result.total} дұрыс жауап (${result.pct}%)`
               : 'Ашық сұрақтар орындалды'}
           </p>
+          {result.localAI && (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 text-xs font-bold"
+              style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a' }}>
+              <span className="material-symbols-outlined text-sm">computer</span>
+              Ашық жауаптар офлайн AI арқылы тексерілді
+            </div>
+          )}
           {violations.length > 0 && (
             <div className="mb-6 p-3 rounded-xl text-left" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
               <p className="text-xs font-black text-red-600">⚠ {violations.length} бұзушылық тіркелді — мұғалімге хабарланды</p>
@@ -286,6 +330,13 @@ export default function ActiveTestMode() {
             </span>
             <span className="text-[10px] font-black uppercase tracking-widest text-[#BFE3E1]/80">
               {modelsLoaded ? 'AI Белсенді' : (loadingStatus || 'Жүктелуде...')}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full"
+            style={{ background: aiStatus === 'ready' ? 'rgba(34,197,94,0.15)' : 'rgba(102,178,178,0.12)', border: `1px solid ${aiStatus === 'ready' ? 'rgba(34,197,94,0.3)' : 'rgba(102,178,178,0.25)'}` }}>
+            <span className="material-symbols-outlined text-sm" style={{ color: aiStatus === 'ready' ? '#22c55e' : '#66B2B2', fontVariationSettings: "'FILL' 1" }}>computer</span>
+            <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: aiStatus === 'ready' ? '#22c55e' : '#66B2B2' }}>
+              {aiStatus === 'ready' ? 'Офлайн AI' : 'AI жүктелуде'}
             </span>
           </div>
           {violations?.length > 0 && (
