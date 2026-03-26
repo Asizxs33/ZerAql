@@ -62,7 +62,7 @@ export default function TeacherDashboard() {
   // WebSocket real-time monitoring
   const classId = classesList[0]?.id || null
   const { connected: wsConnected, students: wsStudents, alerts: wsAlerts, violations: wsViolations } =
-    useTeacherMonitoring({ teacherId: user?.id, classId, enabled: !!classId })
+    useTeacherMonitoring({ teacherId: user?.id, classId, enabled: !!user?.id })
 
   // Alert teacher when a new violation comes in
   const prevViolationCount = useRef(0)

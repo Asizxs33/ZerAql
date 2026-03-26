@@ -36,11 +36,12 @@ export function useStudentMonitoring({ studentId, studentName, classId, enabled 
     })
   }, [studentId, studentName, classId])
 
-  const sendViolation = useCallback((violation) => {
+  const sendViolation = useCallback((violation, teacherId) => {
     socketRef.current?.emit('student:violation', {
       studentId,
       studentName,
       classId,
+      teacherId,
       violation,
     })
   }, [studentId, studentName, classId])

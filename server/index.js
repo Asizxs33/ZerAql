@@ -53,11 +53,14 @@ io.on('connection', (socket) => {
 
   // Teacher joins to monitor a class
   socket.on('teacher:join', ({ teacherId, classId }) => {
-    const room = `class:${classId}`
-    socket.join(room)
-    teacherRooms.set(teacherId, { socketId: socket.id, room })
-    socket.emit('teacher:joined', { room, students: Array.from(studentSessions.values()) })
-    console.log(`Teacher ${teacherId} monitoring ${room}`)
+    // Always join personal teacher room (guaranteed delivery)
+    socket.join(`teacher:${teacherId}`)
+    if (classId) {
+      socket.join(`class:${classId}`)
+    }
+    teacherRooms.set(teacherId, { socketId: socket.id, room: `teacher:${teacherId}` })
+    socket.emit('teacher:joined', { room: `teacher:${teacherId}`, students: Array.from(studentSessions.values()) })
+    console.log(`Teacher ${teacherId} joined teacher:${teacherId}${classId ? ` + class:${classId}` : ''}`)
   })
 
   // Student sends monitoring metrics
@@ -88,14 +91,13 @@ io.on('connection', (socket) => {
   })
 
   // Student reports a violation
-  socket.on('student:violation', ({ studentId, studentName, classId, violation }) => {
-    const room = `class:${classId}`
-    socket.to(room).emit('student:violation', {
-      studentId,
-      studentName,
-      violation,
-      timestamp: new Date().toISOString(),
-    })
+  socket.on('student:violation', ({ studentId, studentName, classId, teacherId, violation }) => {
+    const payload = { studentId, studentName, violation, timestamp: new Date().toISOString() }
+    // Send to teacher's personal room (always works regardless of class assignment)
+    if (teacherId) socket.to(`teacher:${teacherId}`).emit('student:violation', payload)
+    // Also send to class room as fallback
+    if (classId) socket.to(`class:${classId}`).emit('student:violation', payload)
+    console.log(`Violation from ${studentName} → teacher:${teacherId}, class:${classId}`)
   })
 
   // Student joins a lesson session

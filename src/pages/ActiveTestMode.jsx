@@ -95,7 +95,7 @@ export default function ActiveTestMode() {
     if (alertTimeout.current) clearTimeout(alertTimeout.current)
     setAlertMsg(latestViolation.message)
     alertTimeout.current = setTimeout(() => setAlertMsg(null), 3500)
-    sendViolation(latestViolation)
+    sendViolation(latestViolation, lesson?.teacher_id)
   }, [latestViolation?.timestamp])
 
   // Countdown timer
