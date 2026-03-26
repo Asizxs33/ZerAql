@@ -72,7 +72,15 @@ export default function ElectronicJournal() {
     const map = {}
     for (const g of grades) {
       if (!map[g.student_id]) map[g.student_id] = {}
-      map[g.student_id][g.lesson_id] = g
+      // index by lesson_id if present
+      if (g.lesson_id != null) {
+        map[g.student_id][g.lesson_id] = g
+      }
+      // also index by subject as fallback key (for grades without lesson_id)
+      if (g.subject && g.lesson_id == null) {
+        const key = `subj_${g.subject}`
+        if (!map[g.student_id][key]) map[g.student_id][key] = g
+      }
     }
     return map
   }, [grades])
@@ -335,7 +343,7 @@ export default function ElectronicJournal() {
                             </div>
                           </td>
                           {filteredLessons.map(l => {
-                            const g = gradeMap[s.id]?.[l.id]
+                            const g = gradeMap[s.id]?.[l.id] ?? gradeMap[s.id]?.[`subj_${l.subject}`]
                             return (
                               <td key={l.id} className="px-2 py-3 text-center">
                                 <button type="button"
