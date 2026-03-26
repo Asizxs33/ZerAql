@@ -81,9 +81,12 @@ export async function initDB() {
   `)
 
   // Seed sample questions for any active lessons that have no questions yet
-  const { rows: emptyLessons } = await pool.query(
-    `SELECT id, title, subject FROM lessons WHERE status = 'active' AND (questions IS NULL OR questions = '[]'::jsonb)`
-  )
+  let emptyLessons = []
+  try {
+    ;({ rows: emptyLessons } = await pool.query(
+      `SELECT id, title, subject FROM lessons WHERE status = 'active' AND (questions IS NULL OR questions = '[]'::jsonb)`
+    ))
+  } catch {}
 
   const sampleQuestions = {
     'Математика': [
@@ -144,6 +147,7 @@ export async function initDB() {
   }
 
   // Seed one sample lesson per type if teacher exists and types are missing
+  try {
   const { rows: teachers } = await pool.query(`SELECT id FROM users WHERE role = 'teacher' LIMIT 1`)
   if (teachers.length > 0) {
     const teacherId = teachers[0].id
@@ -192,6 +196,9 @@ export async function initDB() {
         console.log(`Seeded ${seed.lesson_type} lesson: ${seed.title}`)
       }
     }
+  }
+  } catch (e) {
+    console.warn('Seed warning (non-fatal):', e.message)
   }
 
   console.log('Database schema initialized')
