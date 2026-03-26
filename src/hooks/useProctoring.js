@@ -105,6 +105,7 @@ export function useProctoring({ enabled = true, onViolation, onMetricsUpdate } =
 
   const faceDescRef = useRef(null)
   const frameCountRef = useRef(0)
+  const verifiedFramesRef = useRef(0)  // consecutive verified frames counter
 
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const [cameraActive, setCameraActive] = useState(false)
@@ -322,24 +323,33 @@ export function useProctoring({ enabled = true, onViolation, onMetricsUpdate } =
       }
 
       // ── Face verification ───────────────────────────────────────────────
-      // Auto-enroll on first 3 clear detections (score > 0.85) if no reference yet
+      // Auto-enroll: first clear detection (score > 0.88) after frame 15
       let faceVerified = false
       if (descriptor) {
         if (!faceDescRef.current) {
           const score = det.detection.score
-          if (score > 0.85 && frameCountRef.current > 10) {
-            // Save this face as the reference (enroll automatically)
+          if (score > 0.88 && frameCountRef.current > 15) {
             faceDescRef.current = descriptor
           }
-          // Still enrolling — not yet verified but not a violation
+          verifiedFramesRef.current = 0
           faceVerified = false
         } else {
           const dist = faceapi.euclideanDistance(faceDescRef.current, descriptor)
-          faceVerified = dist < 0.52
-          if (!faceVerified && frameCountRef.current % 90 === 0) {
-            addViolation({ type: 'face_mismatch', message: 'Тұлға сәйкес емес — басқа адам болуы мүмкін' })
+          const match = dist < 0.45  // tighter threshold (was 0.52)
+          if (match) {
+            verifiedFramesRef.current = Math.min(verifiedFramesRef.current + 1, 10)
+          } else {
+            verifiedFramesRef.current = 0  // reset on any mismatch
+            if (frameCountRef.current % 60 === 0) {
+              addViolation({ type: 'face_mismatch', message: 'Тұлға сәйкес емес — басқа адам болуы мүмкін' })
+            }
           }
+          // Only truly verified after 5 consecutive matching frames
+          faceVerified = verifiedFramesRef.current >= 5
         }
+      } else {
+        // No face detected — reset consecutive counter
+        verifiedFramesRef.current = 0
       }
 
       // ── Age check ───────────────────────────────────────────────────────
