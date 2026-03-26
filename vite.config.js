@@ -15,4 +15,10 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    exclude: ['@xenova/transformers'],
+  },
+  worker: {
+    format: 'es',
+  },
 })
