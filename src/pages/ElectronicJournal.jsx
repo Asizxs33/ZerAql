@@ -67,20 +67,22 @@ export default function ElectronicJournal() {
     [lessons, selSubject]
   )
 
-  // gradeMap[studentId][lessonId] = grade object
+  // studentGrades[studentId] = sorted grades array
+  const studentGrades = useMemo(() => {
+    const map = {}
+    for (const g of grades) {
+      if (!map[g.student_id]) map[g.student_id] = []
+      map[g.student_id].push(g)
+    }
+    return map
+  }, [grades])
+
+  // gradeMap[studentId][lessonId] = grade object (for manual cell editing)
   const gradeMap = useMemo(() => {
     const map = {}
     for (const g of grades) {
       if (!map[g.student_id]) map[g.student_id] = {}
-      // index by lesson_id if present
-      if (g.lesson_id != null) {
-        map[g.student_id][g.lesson_id] = g
-      }
-      // also index by subject as fallback key (for grades without lesson_id)
-      if (g.subject && g.lesson_id == null) {
-        const key = `subj_${g.subject}`
-        if (!map[g.student_id][key]) map[g.student_id][key] = g
-      }
+      if (g.lesson_id != null) map[g.student_id][g.lesson_id] = g
     }
     return map
   }, [grades])
@@ -308,29 +310,24 @@ export default function ElectronicJournal() {
                 <span className="material-symbols-outlined text-4xl text-[#BFE3E1]">group_off</span>
                 <p className="text-sm text-[#66B2B2]">Бұл сыныпта оқушылар жоқ</p>
               </div>
-            ) : filteredLessons.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-2">
-                <span className="material-symbols-outlined text-4xl text-[#BFE3E1]">menu_book</span>
-                <p className="text-sm text-[#66B2B2]">Бұл пән бойынша сабақтар жоқ</p>
-              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead style={{ background: '#E6F4F3' }}>
                     <tr>
-                      <th className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-[#66B2B2] sticky left-0 bg-[#E6F4F3] min-w-[180px]">Оқушы</th>
-                      {filteredLessons.map(l => (
-                        <th key={l.id} className="px-2 py-3 text-[9px] font-black uppercase tracking-wider text-[#66B2B2] text-center min-w-[80px] max-w-[100px]">
-                          <div className="truncate max-w-[80px]" title={l.title}>{l.title}</div>
-                          <div className="text-[8px] text-[#BFE3E1] font-normal normal-case">{l.subject}</div>
-                        </th>
-                      ))}
-                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#66B2B2] text-center">Орт.</th>
+                      <th className="px-5 py-3 text-[10px] font-black uppercase tracking-widest text-[#66B2B2] sticky left-0 bg-[#E6F4F3] min-w-[200px]">Оқушы</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#66B2B2]">Бағалар</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#66B2B2] text-center w-20">Саны</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#66B2B2] text-center w-24">Орташа</th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#66B2B2] text-center w-28">Баға қосу</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#BFE3E1]">
                     {filteredStudents.map(s => {
                       const avg = avgFor(s.id)
+                      const sGrades = (studentGrades[s.id] || [])
+                        .filter(g => selSubject === 'Барлығы' || g.subject === selSubject)
+                        .sort((a, b) => new Date(b.grade_date) - new Date(a.grade_date))
                       return (
                         <tr key={s.id} className="hover:bg-[#E6F4F3]/30 transition-colors bg-white">
                           <td className="px-5 py-3 sticky left-0 bg-white">
@@ -339,27 +336,52 @@ export default function ElectronicJournal() {
                                 style={{ background: 'linear-gradient(135deg,#BFE3E1,#66B2B2)' }}>
                                 <span className="material-symbols-outlined text-white text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>person</span>
                               </div>
-                              <span className="font-bold text-sm text-[#0F4C5C] whitespace-nowrap">{s.full_name}</span>
+                              <div>
+                                <p className="font-bold text-sm text-[#0F4C5C] whitespace-nowrap">{s.full_name}</p>
+                                <p className="text-[10px] text-[#66B2B2]">{s.class_name}</p>
+                              </div>
                             </div>
                           </td>
-                          {filteredLessons.map(l => {
-                            const g = gradeMap[s.id]?.[l.id] ?? gradeMap[s.id]?.[`subj_${l.subject}`]
-                            return (
-                              <td key={l.id} className="px-2 py-3 text-center">
-                                <button type="button"
-                                  onClick={() => openCell(s.id, l.id)}
-                                  className="inline-flex w-8 h-8 rounded-lg items-center justify-center text-xs font-black transition-all hover:scale-110 hover:shadow-md"
-                                  style={g ? gradeStyle(g.score) : { background: '#f0fafa', color: '#BFE3E1', border: '1.5px dashed #BFE3E1' }}>
-                                  {g ? g.score : '+'}
-                                </button>
-                              </td>
-                            )
-                          })}
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1.5">
+                              {sGrades.length === 0 ? (
+                                <span className="text-xs text-[#BFE3E1]">Баға жоқ</span>
+                              ) : sGrades.slice(0, 12).map((g, i) => (
+                                <span key={i}
+                                  className="inline-flex flex-col items-center w-8 h-10 rounded-lg text-xs font-black justify-center cursor-pointer hover:scale-110 transition-all"
+                                  style={gradeStyle(g.score)}
+                                  title={`${g.lesson_title || g.subject || '—'} · ${g.grade_date}`}>
+                                  <span className="text-sm leading-none">{Number(g.score)}</span>
+                                  <span className="text-[8px] opacity-60 leading-none mt-0.5">
+                                    {new Date(g.grade_date).toLocaleDateString('kk-KZ', { month: 'numeric', day: 'numeric' })}
+                                  </span>
+                                </span>
+                              ))}
+                              {sGrades.length > 12 && (
+                                <span className="inline-flex items-center justify-center w-8 h-10 rounded-lg text-[10px] font-black text-[#66B2B2]"
+                                  style={{ background: '#f0fafa', border: '1px dashed #BFE3E1' }}>
+                                  +{sGrades.length - 12}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="text-sm font-bold text-[#66B2B2]">{sGrades.length}</span>
+                          </td>
                           <td className="px-4 py-3 text-center">
                             {avg
-                              ? <span className="font-['Space_Grotesk'] font-black text-lg" style={{ color: Number(avg) >= 4.5 ? '#22c55e' : Number(avg) >= 3.5 ? '#2F7F86' : '#f59e0b' }}>{avg}</span>
-                              : <span className="text-[#BFE3E1] text-sm">—</span>
+                              ? <span className="font-['Space_Grotesk'] font-black text-xl" style={{ color: Number(avg) >= 4.5 ? '#22c55e' : Number(avg) >= 3.5 ? '#2F7F86' : '#f59e0b' }}>{avg}</span>
+                              : <span className="text-[#BFE3E1]">—</span>
                             }
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button type="button"
+                              onClick={() => openCell(s.id, filteredLessons[0]?.id || null)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black transition-all hover:shadow-md"
+                              style={{ background: '#E6F4F3', color: '#2F7F86', border: '1.5px solid #BFE3E1' }}>
+                              <span className="material-symbols-outlined text-sm">add</span>
+                              Баға қос
+                            </button>
                           </td>
                         </tr>
                       )
