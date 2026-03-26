@@ -26,6 +26,7 @@ export default function CreateLesson() {
   const [subject, setSubject] = useState(SUBJECTS[0])
   const [className, setClassName] = useState('')
   const [description, setDescription] = useState('')
+  const [content, setContent] = useState('')
   const [difficulty, setDifficulty] = useState(50)
   const [duration, setDuration] = useState(45)
   const [maxScore, setMaxScore] = useState(100)
@@ -70,6 +71,7 @@ export default function CreateLesson() {
         status,
         lesson_type: lessonType,
         questions,
+        content: content.trim() || null,
       })
       setSuccess(status === 'active' ? 'Сабақ жарияланды!' : 'Жоба сақталды!')
       setTimeout(() => navigate('/teacher'), 1200)
@@ -270,6 +272,56 @@ export default function CreateLesson() {
                 </div>
               </div>
             </div>
+
+            {/* Content for non-quiz types */}
+            {lessonType === 'video' && (
+              <div className="card-glow rounded-2xl p-6 space-y-3">
+                <h3 className="font-['Space_Grotesk'] font-black text-[#0F4C5C] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#7c3aed]" style={{ fontVariationSettings: "'FILL' 1" }}>videocam</span>
+                  Видео сілтемесі
+                </h3>
+                <input
+                  type="url"
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  placeholder="https://www.youtube.com/embed/... немесе видео URL"
+                  className="input-field w-full"
+                />
+                <p className="text-xs text-[#66B2B2]">YouTube embed URL пайдаланыңыз: youtube.com/embed/VIDEO_ID</p>
+              </div>
+            )}
+
+            {lessonType === 'reading' && (
+              <div className="card-glow rounded-2xl p-6 space-y-3">
+                <h3 className="font-['Space_Grotesk'] font-black text-[#0F4C5C] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#0369a1]" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
+                  Оқу мазмұны
+                </h3>
+                <textarea
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  rows={10}
+                  placeholder="## Тақырып&#10;&#10;Материал мазмұнын осында жазыңыз...&#10;&#10;**Жирная** мәтін, `код`, > Цитата қолдауы бар."
+                  className="input-field w-full resize-y font-mono text-sm"
+                />
+              </div>
+            )}
+
+            {lessonType === 'task' && (
+              <div className="card-glow rounded-2xl p-6 space-y-3">
+                <h3 className="font-['Space_Grotesk'] font-black text-[#0F4C5C] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#065f46]" style={{ fontVariationSettings: "'FILL' 1" }}>assignment</span>
+                  Тапсырма мазмұны
+                </h3>
+                <textarea
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  rows={10}
+                  placeholder="## Тапсырма&#10;&#10;1-есеп. ...&#10;2-есеп. ...&#10;&#10;> Ескерту: барлық есептер үшін шешімін жазу міндетті."
+                  className="input-field w-full resize-y text-sm"
+                />
+              </div>
+            )}
 
             {/* Quiz questions */}
             {lessonType === 'quiz' && (

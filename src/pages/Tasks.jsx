@@ -5,6 +5,13 @@ import TopBar from '../components/TopBar'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api/index.js'
 
+const TYPE_META = {
+  quiz:    { icon: 'quiz',        label: 'Тест',            color: '#d97706', bg: '#fef3c7', border: '#f59e0b' },
+  video:   { icon: 'videocam',    label: 'Видео сабақ',     color: '#7c3aed', bg: '#ede9fe', border: '#a78bfa' },
+  reading: { icon: 'menu_book',   label: 'Оқу материалы',   color: '#0369a1', bg: '#e0f2fe', border: '#38bdf8' },
+  task:    { icon: 'assignment',  label: 'Тапсырма',        color: '#065f46', bg: '#d1fae5', border: '#34d399' },
+}
+
 export default function Tasks() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -75,18 +82,22 @@ export default function Tasks() {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {pendingTasks.map(task => (
-                  <div key={`pending-${task.id}`} className="card-glow p-6 rounded-2xl flex flex-col justify-between hover:-translate-y-1 transition-transform border border-[#f59e0b]/30 bg-white">
+                {pendingTasks.map(task => {
+                  const meta = TYPE_META[task.lesson_type] || TYPE_META.quiz
+                  return (
+                  <div key={`pending-${task.id}`} className="card-glow p-6 rounded-2xl flex flex-col justify-between hover:-translate-y-1 transition-transform bg-white"
+                    style={{ border: `1.5px solid ${meta.border}33` }}>
                     <div>
                       <div className="flex justify-between items-start mb-4">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#fef3c7] text-[#d97706]">
-                          <span className="material-symbols-outlined text-xl">assignment_late</span>
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: meta.bg, color: meta.color }}>
+                          <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>{meta.icon}</span>
                         </div>
-                        <span className="text-[10px] font-bold text-[#d97706] bg-[#fef3c7] px-2 py-1 rounded-full uppercase tracking-wider">Күтуде</span>
+                        <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider"
+                          style={{ color: meta.color, background: meta.bg }}>{meta.label}</span>
                       </div>
                       <h4 className="font-bold text-lg text-[#0F4C5C] mb-1 leading-tight">{task.title}</h4>
                       <p className="text-sm text-[#66B2B2] mb-4">{task.subject || task.class_name}</p>
-                      
+
                       <div className="space-y-2 mb-6">
                         <div className="flex items-center gap-2 text-xs text-[#66B2B2]">
                           <span className="material-symbols-outlined text-[14px]">person</span>
@@ -98,12 +109,18 @@ export default function Tasks() {
                         </div>
                       </div>
                     </div>
-                    
-                    <button onClick={() => navigate(`/test?lessonId=${task.id}`)} className="w-full py-3 rounded-xl bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-white font-bold text-sm shadow-md shadow-[#f59e0b]/20 hover:shadow-lg transition-all">
-                      Тапсырманы бастау
+
+                    <button onClick={() => navigate(`/test?lessonId=${task.id}`)}
+                      className="w-full py-3 rounded-xl text-white font-bold text-sm shadow-md hover:shadow-lg transition-all"
+                      style={{ background: `linear-gradient(135deg, ${meta.color}, ${meta.border})` }}>
+                      {task.lesson_type === 'video' ? 'Видеоны қарау'
+                        : task.lesson_type === 'reading' ? 'Оқуды бастау'
+                        : task.lesson_type === 'task' ? 'Тапсырманы орындау'
+                        : 'Тестті бастау'}
                     </button>
                   </div>
-                ))}
+                  )
+                })}
                 
                 {pendingTasks.length === 0 && (
                   <div className="col-span-full card-glow py-10 rounded-3xl text-center border-dashed border-2 border-[#BFE3E1]">

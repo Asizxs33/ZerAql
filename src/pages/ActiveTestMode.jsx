@@ -250,9 +250,11 @@ export default function ActiveTestMode() {
           </div>
           <h2 className="font-['Space_Grotesk'] text-2xl font-black text-[#0F4C5C] mb-2">{labels[result.score]}</h2>
           <p className="text-[#66B2B2] text-sm mb-6">
-            {result.total > 0
-              ? `${result.correct} / ${result.total} дұрыс жауап (${result.pct}%)`
-              : 'Ашық сұрақтар орындалды'}
+            {result.nonQuiz
+              ? 'Тапсырма сәтті аяқталды!'
+              : result.total > 0
+                ? `${result.correct} / ${result.total} дұрыс жауап (${result.pct}%)`
+                : 'Ашық сұрақтар орындалды'}
           </p>
           {result.localAI && (
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 text-xs font-bold"
@@ -285,7 +287,159 @@ export default function ActiveTestMode() {
     )
   }
 
-  // ── No questions ──────────────────────────────────────────────────────────
+  // ── Complete non-quiz lesson (video/reading/task) ─────────────────────────
+  const completeLesson = async (textAnswer = '') => {
+    if (submitting || result) return
+    if (cameraActive && !metrics?.faceVerified) {
+      setAlertMsg('Face ID расталмаған — аяқтау мүмкін емес!')
+      if (alertTimeout.current) clearTimeout(alertTimeout.current)
+      alertTimeout.current = setTimeout(() => setAlertMsg(null), 4000)
+      return
+    }
+    setSubmitting(true)
+    try {
+      await api.addGrade({ lesson_id: lessonId ? Number(lessonId) : null, subject: lesson?.subject || null, score: 5 })
+    } catch {}
+    setResult({ score: 5, correct: 0, total: 0, pct: 100, openScored: 0, localAI: false, nonQuiz: true })
+    setSubmitting(false)
+  }
+
+  const lessonType = lesson?.lesson_type || 'quiz'
+  const lessonContent = lesson?.content || ''
+
+  // ── Video lesson ───────────────────────────────────────────────────────────
+  if (lessonType === 'video' && questions.length === 0) {
+    const isYoutube = lessonContent.includes('youtube.com/embed') || lessonContent.includes('youtu.be')
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-start pt-10 px-4" style={{ background: '#f0fafa' }}>
+        {alertMsg && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl font-bold text-sm text-white shadow-xl"
+            style={{ background: '#ef4444' }}>{alertMsg}</div>
+        )}
+        <div className="w-full max-w-3xl space-y-6">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/tasks')} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[#E6F4F3] transition-all">
+              <span className="material-symbols-outlined text-[#2F7F86]">arrow_back</span>
+            </button>
+            <div>
+              <p className="text-[10px] font-bold text-[#7c3aed] uppercase tracking-wider">Видео сабақ</p>
+              <h1 className="font-['Space_Grotesk'] font-black text-xl text-[#0F4C5C]">{lesson?.title}</h1>
+            </div>
+          </div>
+          <div className="rounded-3xl overflow-hidden shadow-xl" style={{ background: '#000', aspectRatio: '16/9' }}>
+            {isYoutube ? (
+              <iframe src={lessonContent} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="video" />
+            ) : (
+              <video src={lessonContent} controls className="w-full h-full" />
+            )}
+          </div>
+          <div className="card rounded-2xl p-5 flex items-center justify-between">
+            <div>
+              <p className="font-bold text-[#0F4C5C]">{lesson?.subject}</p>
+              <p className="text-sm text-[#66B2B2]">{lesson?.duration} мин · {lesson?.teacher_name}</p>
+            </div>
+            <button onClick={() => completeLesson()} disabled={submitting}
+              className="px-6 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
+              {submitting ? 'Жіберілуде...' : cameraActive && !metrics?.faceVerified ? '🔒 Face ID қажет' : '✓ Қараып шықтым'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Reading material ───────────────────────────────────────────────────────
+  if (lessonType === 'reading' && questions.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-start pt-10 px-4" style={{ background: '#f0fafa' }}>
+        {alertMsg && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl font-bold text-sm text-white shadow-xl"
+            style={{ background: '#ef4444' }}>{alertMsg}</div>
+        )}
+        <div className="w-full max-w-2xl space-y-6">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/tasks')} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[#E6F4F3]">
+              <span className="material-symbols-outlined text-[#2F7F86]">arrow_back</span>
+            </button>
+            <div>
+              <p className="text-[10px] font-bold text-[#0369a1] uppercase tracking-wider">Оқу материалы</p>
+              <h1 className="font-['Space_Grotesk'] font-black text-xl text-[#0F4C5C]">{lesson?.title}</h1>
+            </div>
+          </div>
+          <div className="card rounded-3xl p-8 prose max-w-none text-[#0F4C5C] leading-relaxed">
+            {lessonContent.split('\n').map((line, i) => {
+              if (line.startsWith('## ')) return <h2 key={i} className="font-['Space_Grotesk'] font-black text-lg text-[#0F4C5C] mt-6 mb-2">{line.slice(3)}</h2>
+              if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-bold text-[#0F4C5C] my-1">{line.slice(2,-2)}</p>
+              if (line.startsWith('`') && line.endsWith('`')) return <code key={i} className="block bg-[#E6F4F3] px-4 py-2 rounded-xl font-mono text-sm text-[#0F4C5C] my-2">{line.slice(1,-1)}</code>
+              if (line.startsWith('- ') || line.match(/^\d+\./)) return <p key={i} className="text-sm text-[#0F4C5C] my-0.5 pl-4">• {line.replace(/^-\s|^\d+\.\s/, '')}</p>
+              if (line.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-[#BFE3E1] pl-4 text-[#66B2B2] italic text-sm my-2">{line.slice(2)}</blockquote>
+              if (!line.trim()) return <br key={i} />
+              return <p key={i} className="text-sm text-[#0F4C5C] my-1">{line}</p>
+            })}
+          </div>
+          <div className="flex justify-end">
+            <button onClick={() => completeLesson()} disabled={submitting}
+              className="px-8 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #0369a1, #0284c7)' }}>
+              {submitting ? 'Жіберілуде...' : cameraActive && !metrics?.faceVerified ? '🔒 Face ID қажет' : '✓ Оқып шықтым'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Assignment / task ──────────────────────────────────────────────────────
+  if (lessonType === 'task' && questions.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-start pt-10 px-4" style={{ background: '#f0fafa' }}>
+        {alertMsg && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl font-bold text-sm text-white shadow-xl"
+            style={{ background: '#ef4444' }}>{alertMsg}</div>
+        )}
+        <div className="w-full max-w-2xl space-y-6">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/tasks')} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-[#E6F4F3]">
+              <span className="material-symbols-outlined text-[#2F7F86]">arrow_back</span>
+            </button>
+            <div>
+              <p className="text-[10px] font-bold text-[#065f46] uppercase tracking-wider">Тапсырма</p>
+              <h1 className="font-['Space_Grotesk'] font-black text-xl text-[#0F4C5C]">{lesson?.title}</h1>
+            </div>
+          </div>
+          <div className="card rounded-3xl p-8">
+            {lessonContent.split('\n').map((line, i) => {
+              if (line.startsWith('## ')) return <h2 key={i} className="font-['Space_Grotesk'] font-black text-lg text-[#0F4C5C] mt-4 mb-2">{line.slice(3)}</h2>
+              if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-bold text-[#0F4C5C] my-1">{line.slice(2,-2)}</p>
+              if (line.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-[#34d399] pl-4 text-[#065f46] text-sm my-2">{line.slice(2)}</blockquote>
+              if (!line.trim()) return <br key={i} />
+              return <p key={i} className="text-sm text-[#0F4C5C] my-1">{line}</p>
+            })}
+          </div>
+          <div className="card rounded-2xl p-5 space-y-3">
+            <label className="text-sm font-black text-[#0F4C5C]">Жауабыңыз:</label>
+            <textarea
+              value={openText}
+              onChange={e => setOpenText(e.target.value)}
+              rows={6}
+              placeholder="Есептердің шешімін осында жазыңыз..."
+              className="w-full rounded-xl border border-[#BFE3E1] px-4 py-3 text-sm text-[#0F4C5C] resize-none focus:outline-none focus:border-[#2F7F86]"
+            />
+            <div className="flex justify-end">
+              <button onClick={() => completeLesson(openText)} disabled={submitting || !openText.trim()}
+                className="px-8 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #065f46, #047857)' }}>
+                {submitting ? 'Жіберілуде...' : cameraActive && !metrics?.faceVerified ? '🔒 Face ID қажет' : '✓ Тапсыру'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── No questions fallback ──────────────────────────────────────────────────
   if (questions.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0fafa' }}>

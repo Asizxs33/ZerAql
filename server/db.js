@@ -77,6 +77,7 @@ export async function initDB() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS class_id INTEGER REFERENCES classes(id) ON DELETE SET NULL;
     ALTER TABLE lessons ADD COLUMN IF NOT EXISTS questions JSONB DEFAULT '[]';
     ALTER TABLE lessons ADD COLUMN IF NOT EXISTS lesson_type VARCHAR(20) DEFAULT 'quiz';
+    ALTER TABLE lessons ADD COLUMN IF NOT EXISTS content TEXT;
   `)
 
   // Seed sample questions for any active lessons that have no questions yet
@@ -140,6 +141,57 @@ export async function initDB() {
 
   if (emptyLessons.length > 0) {
     console.log(`Seeded questions for ${emptyLessons.length} lessons`)
+  }
+
+  // Seed one sample lesson per type if teacher exists and types are missing
+  const { rows: teachers } = await pool.query(`SELECT id FROM users WHERE role = 'teacher' LIMIT 1`)
+  if (teachers.length > 0) {
+    const teacherId = teachers[0].id
+    const typesToSeed = [
+      {
+        lesson_type: 'video',
+        title: 'Ньютонның қозғалыс заңдары — видео сабақ',
+        subject: 'Физика',
+        content: 'https://www.youtube.com/embed/kKKM8Y-u7ds',
+        questions: [],
+        duration: 20,
+        difficulty: 40,
+      },
+      {
+        lesson_type: 'reading',
+        title: 'Фотосинтез процесі — оқу материалы',
+        subject: 'Биология',
+        content: `## Фотосинтез дегеніміз не?\n\nФотосинтез — жасыл өсімдіктердің күн энергиясын пайдаланып, көмірқышқыл газы (CO₂) мен суды (H₂O) органикалық заттарға — глюкозаға айналдыру процесі.\n\n**Реакция формуласы:**\n\`6CO₂ + 6H₂O + жарық → C₆H₁₂O₆ + 6O₂\`\n\n## Қай жерде жүреді?\n\nФотосинтез хлоропластта жүреді. Хлоропластта хлорофилл пигменті бар — ол жасыл түс береді және күн жарығын сіңіреді.\n\n## Кезеңдері\n\n1. **Жарықтық кезең** — хлорофилл жарықты сіңіреді, су молекулалары ыдырайды, АТФ түзіледі.\n2. **Қараңғылық кезең (Кальвин циклы)** — CO₂ глюкозаға айналады.\n\n## Маңызы\n- Атмосферада оттегін (O₂) өндіреді\n- Барлық тізбектің негізгі қоректік байлығы\n- Климатты реттейді`,
+        questions: [],
+        duration: 15,
+        difficulty: 35,
+      },
+      {
+        lesson_type: 'task',
+        title: 'Геометриялық есептер — үй тапсырмасы',
+        subject: 'Математика',
+        content: `## Тапсырма\n\nТөмендегі есептерді шығарып, жауаптарыңызды толық жазыңыз:\n\n**1-есеп.** Тіктөртбұрыштың ені 6 см, ұзындығы 9 см. Аудан мен периметрді табыңыз.\n\n**2-есеп.** Дұрыс үшбұрыштың қабырғасы 8 см болса, оның биіктігін табыңыз.\n\n**3-есеп.** Шеңбердің радиусы 5 см. Ауданын және ұзындығын есептеңіз (π ≈ 3.14).\n\n**4-есеп.** Трапецияның негіздері 4 см және 8 см, биіктігі 5 см. Ауданын табыңыз.\n\n> Барлық есептер үшін формуланы, есептеу барысын және жауапты жазу міндетті.`,
+        questions: [],
+        duration: 30,
+        difficulty: 55,
+      },
+    ]
+
+    for (const seed of typesToSeed) {
+      const { rows: exists } = await pool.query(
+        `SELECT id FROM lessons WHERE lesson_type = $1 AND teacher_id = $2 LIMIT 1`,
+        [seed.lesson_type, teacherId]
+      )
+      if (exists.length === 0) {
+        await pool.query(
+          `INSERT INTO lessons (title, subject, teacher_id, lesson_type, content, questions, duration, difficulty, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')`,
+          [seed.title, seed.subject, teacherId, seed.lesson_type, seed.content,
+           JSON.stringify(seed.questions), seed.duration, seed.difficulty]
+        )
+        console.log(`Seeded ${seed.lesson_type} lesson: ${seed.title}`)
+      }
+    }
   }
 
   console.log('Database schema initialized')
