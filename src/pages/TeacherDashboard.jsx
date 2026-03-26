@@ -245,15 +245,28 @@ export default function TeacherDashboard() {
               </div>
             ))}
 
-            {/* Violations panel */}
-            {wsViolations.length > 0 && (
-              <div className="rounded-2xl overflow-hidden" style={{ border: '1.5px solid #fecaca', background: '#fff5f5' }}>
-                <div className="flex items-center gap-2 px-5 py-3" style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
-                  <span className="material-symbols-outlined text-base text-red-500" style={{ fontVariationSettings: "'FILL' 1" }}>gpp_bad</span>
-                  <span className="font-['Space_Grotesk'] font-black text-sm text-red-700">Бұзушылықтар</span>
-                  <span className="ml-auto bg-red-500 text-white text-xs font-black px-2 py-0.5 rounded-full">{wsViolations.length}</span>
+            {/* Violations panel — always visible */}
+            <div className="rounded-2xl overflow-hidden" style={{ border: `1.5px solid ${wsViolations.length > 0 ? '#fecaca' : '#BFE3E1'}`, background: wsViolations.length > 0 ? '#fff5f5' : '#fff' }}>
+              <div className="flex items-center gap-2 px-5 py-3" style={{ background: wsViolations.length > 0 ? '#fef2f2' : '#f0fafa', borderBottom: `1px solid ${wsViolations.length > 0 ? '#fecaca' : '#BFE3E1'}` }}>
+                <span className="material-symbols-outlined text-base" style={{ color: wsViolations.length > 0 ? '#ef4444' : '#66B2B2', fontVariationSettings: "'FILL' 1" }}>gpp_bad</span>
+                <span className="font-['Space_Grotesk'] font-black text-sm" style={{ color: wsViolations.length > 0 ? '#b91c1c' : '#0F4C5C' }}>
+                  Бұзушылықтар
+                </span>
+                <span className="text-[10px] text-[#66B2B2] ml-1">— нақты уақытта</span>
+                {wsViolations.length > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs font-black px-2 py-0.5 rounded-full animate-pulse">{wsViolations.length}</span>
+                )}
+                {!wsConnected && (
+                  <span className="ml-auto text-[10px] text-[#66B2B2]">WS офлайн</span>
+                )}
+              </div>
+              {wsViolations.length === 0 ? (
+                <div className="flex items-center gap-3 px-5 py-4 text-[#66B2B2]">
+                  <span className="material-symbols-outlined text-sm">shield</span>
+                  <span className="text-xs">Бұзушылықтар жоқ — барлығы жақсы</span>
                 </div>
-                <div className="divide-y divide-red-100 max-h-48 overflow-y-auto">
+              ) : (
+                <div className="divide-y divide-red-100 max-h-52 overflow-y-auto">
                   {wsViolations.slice(0, 20).map((v) => (
                     <div key={v.id} className="flex items-center gap-3 px-5 py-2.5">
                       <span className="material-symbols-outlined text-sm text-red-400" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -273,8 +286,8 @@ export default function TeacherDashboard() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Students section */}
             <section>
